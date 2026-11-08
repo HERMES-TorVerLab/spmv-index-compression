@@ -1,0 +1,75 @@
+category,tier,group,name,rows,cols,nnz,kind,is_binary,pattern_symmetry,numeric_symmetry,url
+cfd,M,Bourchtein,atmosmodl,1489752,1489752,10319760,computational fluid dynamics problem,0,1.0,0.6714503542918647,https://sparse.tamu.edu/MM/Bourchtein/atmosmodl.tar.gz
+cfd,M,Janna,StocF-1465,1465137,1465137,21005389,computational fluid dynamics problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Janna/StocF-1465.tar.gz
+cfd,M,Fluorem,RM07R,381689,381689,37464962,computational fluid dynamics problem,0,0.9261667922354103,4.260681089287885e-06,https://sparse.tamu.edu/MM/Fluorem/RM07R.tar.gz
+cfd,S,Goodwin,rim,22560,22560,1014951,computational fluid dynamics problem,0,0.6390640220938991,0.0,https://sparse.tamu.edu/MM/Goodwin/rim.tar.gz
+cfd,S,Simon,bbmat,38744,38744,1771722,computational fluid dynamics problem,0,0.5295358625441292,0.0005851199495896658,https://sparse.tamu.edu/MM/Simon/bbmat.tar.gz
+cfd,S,Rudnyi,water_tank,60740,60740,2035281,computational fluid dynamics problem,0,0.9691204183655847,0.9180067671423384,https://sparse.tamu.edu/MM/Rudnyi/water_tank.tar.gz
+cfd,S,Wissgott,parabolic_fem,525825,525825,3674625,computational fluid dynamics problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Wissgott/parabolic_fem.tar.gz
+cfd,XL,Fluorem,HV15R,2017169,2017169,283073458,computational fluid dynamics problem,0,0.8446615474952066,0.0007082780488857875,https://sparse.tamu.edu/MM/Fluorem/HV15R.tar.gz
+chemistry,M,PARSEC,Si87H76,240369,240369,10661631,theoretical/quantum chemistry problem,0,1.0,1.0,https://sparse.tamu.edu/MM/PARSEC/Si87H76.tar.gz
+chemistry,M,PARSEC,SiO2,155331,155331,11283503,theoretical/quantum chemistry problem,0,1.0,1.0,https://sparse.tamu.edu/MM/PARSEC/SiO2.tar.gz
+chemistry,S,PARSEC,SiO,33401,33401,1317655,theoretical/quantum chemistry problem,0,1.0,1.0,https://sparse.tamu.edu/MM/PARSEC/SiO.tar.gz
+chemistry,S,PARSEC,GaAsH6,61349,61349,3381809,theoretical/quantum chemistry problem,0,1.0,1.0,https://sparse.tamu.edu/MM/PARSEC/GaAsH6.tar.gz
+circuit_power,L,Freescale,circuit5M,5558326,5558326,59524291,circuit simulation problem,0,0.9999998517635799,0.4198865531852634,https://sparse.tamu.edu/MM/Freescale/circuit5M.tar.gz
+circuit_power,M,TSOPF,TSOPF_FS_b300_c3,84414,84414,13135930,power network problem,0,1.0,1.0,https://sparse.tamu.edu/MM/TSOPF/TSOPF_FS_b300_c3.tar.gz
+circuit_power,M,Freescale,Freescale2,2999349,2999349,14313235,circuit simulation matrix,0,0.9853083953765489,0.5600838032920651,https://sparse.tamu.edu/MM/Freescale/Freescale2.tar.gz
+circuit_power,M,TSOPF,TSOPF_RS_b2383,38120,38120,16171169,power network problem,0,0.002485718029041526,0.0003350401831305099,https://sparse.tamu.edu/MM/TSOPF/TSOPF_RS_b2383.tar.gz
+circuit_power,M,Rajat,rajat31,4690002,4690002,20316253,circuit simulation problem,0,1.0,0.4000960614178773,https://sparse.tamu.edu/MM/Rajat/rajat31.tar.gz
+circuit_power,S,TSOPF,TSOPF_RS_b39_c30,60098,60098,1079986,power network problem,0,0.05903687108113011,8.236061201778597e-05,https://sparse.tamu.edu/MM/TSOPF/TSOPF_RS_b39_c30.tar.gz
+circuit_power,S,TSOPF,TSOPF_FS_b162_c3,30798,30798,1801300,power network problem,0,1.0,1.0,https://sparse.tamu.edu/MM/TSOPF/TSOPF_FS_b162_c3.tar.gz
+circuit_power,S,AMD,G3_circuit,1585478,1585478,7660826,circuit simulation problem,0,1.0,1.0,https://sparse.tamu.edu/MM/AMD/G3_circuit.tar.gz
+circuit_power,S,Rajat,Raj1,263743,263743,1300261,circuit simulation problem,0,0.998585875116119,0.5762090211971218,https://sparse.tamu.edu/MM/Rajat/Raj1.tar.gz
+electromagnetics,L,Dziekonski,dielFilterV3real,1102824,1102824,89306020,electromagnetics problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Dziekonski/dielFilterV3real.tar.gz
+electromagnetics,M,Dziekonski,gsm_106857,589446,589446,21758924,electromagnetics problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Dziekonski/gsm_106857.tar.gz
+electromagnetics,M,Dziekonski,dielFilterV2real,1157456,1157456,48538952,electromagnetics problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Dziekonski/dielFilterV2real.tar.gz
+electromagnetics,S,Li,li,22695,22695,1215181,electromagnetics problem,0,1.0,0.8685670104303111,https://sparse.tamu.edu/MM/Li/li.tar.gz
+electromagnetics,S,Um,2cubes_sphere,101492,101492,1647264,electromagnetics problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Um/2cubes_sphere.tar.gz
+electromagnetics,S,Um,offshore,259789,259789,4242673,electromagnetics problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Um/offshore.tar.gz
+electromagnetics,S,CEMW,tmt_unsym,917825,917825,4584801,electromagnetics problem,0,1.0,0.0,https://sparse.tamu.edu/MM/CEMW/tmt_unsym.tar.gz
+graph,L,DIMACS10,delaunay_n23,8388608,8388608,50331568,undirected graph,1,1.0,1.0,https://sparse.tamu.edu/MM/DIMACS10/delaunay_n23.tar.gz
+graph,L,SNAP,soc-LiveJournal1,4847571,4847571,68993773,directed graph,1,0.7484193555024753,0.7484193555024753,https://sparse.tamu.edu/MM/SNAP/soc-LiveJournal1.tar.gz
+graph,L,DIMACS10,europe_osm,50912018,50912018,108109320,undirected graph,1,1.0,1.0,https://sparse.tamu.edu/MM/DIMACS10/europe_osm.tar.gz
+graph,M,DIMACS10,kron_g500-logn17,131072,131072,10228360,undirected multigraph,0,1.0,1.0,https://sparse.tamu.edu/MM/DIMACS10/kron_g500-logn17.tar.gz
+graph,M,Gleich,wikipedia-20051105,1634989,1634989,19753078,directed graph,1,0.1211282592272251,0.1211282592272251,https://sparse.tamu.edu/MM/Gleich/wikipedia-20051105.tar.gz
+graph,M,SNAP,wiki-topcats,1791489,1791489,28511807,directed graph with communities,1,0.2149515115699757,0.2149515115699757,https://sparse.tamu.edu/MM/SNAP/wiki-topcats.tar.gz
+graph,S,DIMACS10,ia2010,216007,216007,1021170,undirected weighted graph,0,1.0,1.0,https://sparse.tamu.edu/MM/DIMACS10/ia2010.tar.gz
+graph,S,LAW,dblp-2010,326186,326186,1615400,undirected graph,1,1.0,1.0,https://sparse.tamu.edu/MM/LAW/dblp-2010.tar.gz
+graph,S,LAW,cnr-2000,325557,325557,3216152,directed graph,1,0.2491384628169437,0.2491384628169437,https://sparse.tamu.edu/MM/LAW/cnr-2000.tar.gz
+graph,XL,FlowIPM22,Spielman_k600,72180402,72180402,216902404,undirected weighted graph,0,1.0,1.0,https://sparse.tamu.edu/MM/FlowIPM22/Spielman_k600.tar.gz
+graph,XL,MAWI,mawi_201512020130,128568730,128568730,270234840,undirected weighted graph,0,1.0,1.0,https://sparse.tamu.edu/MM/MAWI/mawi_201512020130.tar.gz
+graph,XL,Mycielski,mycielskian18,196607,196607,300933832,undirected graph,1,1.0,1.0,https://sparse.tamu.edu/MM/Mycielski/mycielskian18.tar.gz
+optimization,L,Schenk,nlpkkt120,3542400,3542400,95117792,optimization problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Schenk/nlpkkt120.tar.gz
+optimization,M,Zaoui,kkt_power,2063494,2063494,12771361,optimization problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Zaoui/kkt_power.tar.gz
+optimization,M,Schenk,nlpkkt80,1062400,1062400,28192672,optimization problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Schenk/nlpkkt80.tar.gz
+optimization,S,GHS_indef,boyd1,93279,93279,1211231,optimization problem,0,1.0,1.0,https://sparse.tamu.edu/MM/GHS_indef/boyd1.tar.gz
+optimization,S,GHS_indef,boyd2,466316,466316,1500397,optimization problem,0,1.0,1.0,https://sparse.tamu.edu/MM/GHS_indef/boyd2.tar.gz
+optimization,S,QLi,crashbasis,160000,160000,1750416,optimization problem,0,0.5503013048158469,0.0002439613283568576,https://sparse.tamu.edu/MM/QLi/crashbasis.tar.gz
+optimization,S,Schenk_IBMNA,c-big,345241,345241,2340859,optimization problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Schenk_IBMNA/c-big.tar.gz
+optimization,XL,Schenk,nlpkkt160,8345600,8345600,225422112,optimization problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Schenk/nlpkkt160.tar.gz
+optimization,XL,Schenk,nlpkkt200,16240000,16240000,440225632,optimization problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Schenk/nlpkkt200.tar.gz
+pde,L,VLSI,vas_stokes_2M,2146677,2146677,65129037,semiconductor process problem,0,0.464592974921867,0.2072952172640085,https://sparse.tamu.edu/MM/VLSI/vas_stokes_2M.tar.gz
+pde,L,Janna,Bump_2911,2911419,2911419,127729899,2D/3D problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Janna/Bump_2911.tar.gz
+pde,L,VLSI,vas_stokes_4M,4382246,4382246,131577616,semiconductor process problem,0,0.4636465777016884,0.1138555436412505,https://sparse.tamu.edu/MM/VLSI/vas_stokes_4M.tar.gz
+pde,M,BenElechi,BenElechi1,245874,245874,13150496,2D/3D problem,0,1.0,1.0,https://sparse.tamu.edu/MM/BenElechi/BenElechi1.tar.gz
+pde,M,Bodendiek,CurlCurl_4,2380515,2380515,26515867,model reduction problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Bodendiek/CurlCurl_4.tar.gz
+pde,M,VLSI,ss,1652680,1652680,34753577,semiconductor process problem,0,0.6780372145201986,0.2889301761218133,https://sparse.tamu.edu/MM/VLSI/ss.tar.gz
+pde,M,VLSI,nv2,1453908,1453908,37475646,semiconductor device problem,0,1.0,0.1982255825635065,https://sparse.tamu.edu/MM/VLSI/nv2.tar.gz
+pde,S,VLSI,mosfet2,46994,46994,1013062,semiconductor device problem,0,1.0,0.1797368301196189,https://sparse.tamu.edu/MM/VLSI/mosfet2.tar.gz
+pde,S,VLSI,nv1,75468,75468,1635003,semiconductor device problem,0,1.0,0.2136393219773843,https://sparse.tamu.edu/MM/VLSI/nv1.tar.gz
+pde,S,Bodendiek,CurlCurl_1,226451,226451,2472071,model reduction problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Bodendiek/CurlCurl_1.tar.gz
+pde,S,Williams,cant,62451,62451,4007383,2D/3D problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Williams/cant.tar.gz
+pde,XL,Janna,Queen_4147,4147110,4147110,316548962,2D/3D problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Janna/Queen_4147.tar.gz
+pde,XL,VLSI,stokes,11449533,11449533,349321980,semiconductor process problem,0,0.4729070672045655,0.1293167418294988,https://sparse.tamu.edu/MM/VLSI/stokes.tar.gz
+structural,L,Schenk_AFE,af_shell10,1508065,1508065,52259885,structural problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Schenk_AFE/af_shell10.tar.gz
+structural,L,Janna,Geo_1438,1437960,1437960,60236322,structural problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Janna/Geo_1438.tar.gz
+structural,L,GHS_psdef,audikw_1,943695,943695,77651847,structural problem,0,1.0,1.0,https://sparse.tamu.edu/MM/GHS_psdef/audikw_1.tar.gz
+structural,L,Janna,ML_Geer,1504002,1504002,110686677,structural problem,0,1.0,2.381330188145693e-07,https://sparse.tamu.edu/MM/Janna/ML_Geer.tar.gz
+structural,M,GHS_psdef,crankseg_1,52804,52804,10614210,structural problem,0,1.0,1.0,https://sparse.tamu.edu/MM/GHS_psdef/crankseg_1.tar.gz
+structural,M,Boeing,pwtk,217918,217918,11524432,structural problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Boeing/pwtk.tar.gz
+structural,M,Schenk_AFE,af_0_k101,503625,503625,17550675,structural problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Schenk_AFE/af_0_k101.tar.gz
+structural,M,Koutsovasilis,F1,343791,343791,26837113,structural problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Koutsovasilis/F1.tar.gz
+structural,S,GHS_indef,dawson5,51537,51537,1010777,structural problem,0,1.0,1.0,https://sparse.tamu.edu/MM/GHS_indef/dawson5.tar.gz
+structural,S,Lin,Lin,256000,256000,1766400,structural problem,0,1.0,1.0,https://sparse.tamu.edu/MM/Lin/Lin.tar.gz
+structural,S,DNVS,shipsec8,114919,114919,3303553,structural problem,0,1.0,1.0,https://sparse.tamu.edu/MM/DNVS/shipsec8.tar.gz
+structural,S,DNVS,shipsec5,179860,179860,4598604,structural problem,0,1.0,1.0,https://sparse.tamu.edu/MM/DNVS/shipsec5.tar.gz

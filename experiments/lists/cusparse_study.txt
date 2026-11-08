@@ -1,0 +1,14 @@
+# cusparse_study.txt - why cuSPARSE at FP16 falls behind CSR-i32 on some matrices and not on others.
+#
+# At FP64 cuSPARSE is a few per cent faster than CSR-i32, at FP16 it is slower by up to 1.6x on
+# finite-element matrices with long regular rows, and faster on short or irregular rows. Profiled with
+# SPMV_NCU_KERNELS=regex:. so that the cuSPARSE kernels are collected beside CSR-i32.
+
+# cuSPARSE slower at FP16 (time over CSR-i32 1.63, 1.55, 1.28)
+matrices/pde/CurlCurl_1/CurlCurl_1.mtx
+matrices/pde/cant/cant.mtx
+matrices/structural/shipsec8/shipsec8.mtx
+
+# cuSPARSE faster at FP16 (0.81, 0.84)
+matrices/chemistry/SiO2/SiO2.mtx
+matrices/circuit_power/rajat31/rajat31.mtx

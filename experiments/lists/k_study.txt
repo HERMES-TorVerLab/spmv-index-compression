@@ -1,0 +1,35 @@
+# k_study.txt - the matrices that decompose K, inside the model domain and at each of its limits.
+#
+# K = B * (Q / Q_real) * beta: the counted share of the real DRAM traffic times the share of the
+# bandwidth the kernel keeps busy. Inside the domain the first factor is one within five per cent
+# and K/K_ref is the ratio of the two betas. Each limit of the model is one factor leaving that
+# regime, so each group below is chosen to move one factor and to leave the other alone.
+
+# inside the domain: working set above the 32 MiB L2,
+# imbalance below ten
+matrices/circuit_power/TSOPF_RS_b2383/TSOPF_RS_b2383.mtx
+matrices/structural/shipsec5/shipsec5.mtx
+matrices/structural/af_shell10/af_shell10.mtx
+matrices/structural/af_0_k101/af_0_k101.mtx
+matrices/pde/BenElechi1/BenElechi1.mtx
+matrices/structural/ML_Geer/ML_Geer.mtx
+matrices/structural/Geo_1438/Geo_1438.mtx
+matrices/pde/Bump_2911/Bump_2911.mtx
+matrices/pde/CurlCurl_4/CurlCurl_4.mtx
+
+# working set inside the L2, balanced rows: Q_real falls below Q, so Q/Q_real rises above one
+matrices/cfd/rim/rim.mtx
+matrices/electromagnetics/2cubes_sphere/2cubes_sphere.mtx
+matrices/pde/nv1/nv1.mtx
+
+# imbalance above ten, working set above the L2: idle lanes and warps lower beta
+matrices/circuit_power/TSOPF_FS_b300_c3/TSOPF_FS_b300_c3.mtx
+matrices/graph/kron_g500-logn17/kron_g500-logn17.mtx
+matrices/graph/wiki-topcats/wiki-topcats.mtx
+matrices/chemistry/SiO2/SiO2.mtx
+
+# short rows and an x larger than the L2: the gather fetches a sector per miss, so Q/Q_real
+# falls below one, and the row metadata weighs on every nonzero
+matrices/graph/delaunay_n23/delaunay_n23.mtx
+matrices/graph/europe_osm/europe_osm.mtx
+matrices/circuit_power/G3_circuit/G3_circuit.mtx

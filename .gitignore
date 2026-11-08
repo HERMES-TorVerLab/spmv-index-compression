@@ -1,0 +1,7 @@
+/build/
+/results/
+/output/
+__pycache__/
+*.pyc
+*.mtx
+*.rcm.perm
