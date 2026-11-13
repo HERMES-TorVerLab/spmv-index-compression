@@ -641,8 +641,8 @@ def draw_fp64_window(axis, records, bandwidth, title):
     narrow_window = [left + index * (right - left) / 200 for index in range(201)]
     axis.plot(narrow_window, [bandwidth * intensity for intensity in narrow_window], color=INK_SECONDARY,
               linewidth=1.3)
-    axis.annotate(r"$P = B \cdot I$", xy=(left + 0.76 * (right - left), bandwidth * (left + 0.67 * (right - left))),
-                  color=INK_SECONDARY, fontsize=7, rotation=33)
+    axis.annotate(r"$P = B \cdot I$", xy=(left + 0.04 * (right - left), bandwidth * (left + 0.04 * (right - left))),
+                  xytext=(4, 6), textcoords="offset points", color=INK_SECONDARY, fontsize=7, rotation=33)
     for record in records:
         axis.plot([record["intensity_i32"], record["intensity_r16"]], [record["gflops_i32"], record["gflops_i16"]],
                   color=GRID, linewidth=0.9, zorder=1)

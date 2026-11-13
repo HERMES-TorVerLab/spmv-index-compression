@@ -26,6 +26,7 @@ One sentence per line in the generated LaTeX; parentheses instead of em-dashes, 
 semicolons in the prose.
 """
 import argparse
+import csv
 import math
 import statistics
 from pathlib import Path
@@ -380,7 +381,7 @@ def performance_figure(table, device, figures_dir):
             axis.bar([centre], [middle], width, color=shared.PRECISION_COLOUR[precision],
                      label=label if position == 0 else None, zorder=2)
             axis.errorbar([centre], [middle], yerr=[[middle - low], [high - middle]], fmt="none",
-                          ecolor=shared.INK_SECONDARY, elinewidth=0.8, capsize=1.6, zorder=3)
+                          ecolor=shared.INK_PRIMARY, elinewidth=0.8, capsize=1.6, zorder=3)
             axis.plot([centre - width / 2, centre + width / 2], [roof, roof], color=shared.INK_PRIMARY,
                       linewidth=1.1, zorder=4)
     axis.plot([], [], color=shared.INK_PRIMARY, linewidth=1.1, label=r"memory roof $2B/q$")
@@ -471,11 +472,13 @@ def add_cusparse_fp16(table, csv_path):
     return added
 
 
-def setup_tex(device, records, identical, cusparse_deviation, timing, admissible_before, cost, own_gain, separate_fp16):
+def setup_tex(device, records, identical, cusparse_deviation, timing, admissible_before, cost, own_gain, separate_fp16,
+              repeat=None, own_check=None, own_lp=None):
     reps, warmup, min_sample_ms = timing
     total = len(of_precision(records, "fp64"))
     admissible_after = len(with_layout(of_precision(records, "fp64"), "r16"))
-    resident = sum(1 for record in of_precision(records, "fp64") if record["resident"])
+    resident_of = [sum(1 for record in of_precision(records, precision) if record["resident"]) for precision, _, _ in PRECISIONS]
+    resident = f"{resident_of[0]}, {resident_of[1]} and {resident_of[2]}"
     all_identical = all(all(flags) for flags in identical.values())
     identity_text = ("and they are on every matrix at all three precisions" if all_identical
                      else "which is checked on every matrix")
@@ -493,24 +496,50 @@ def setup_tex(device, records, identical, cusparse_deviation, timing, admissible
     brief_vendor = (rf"${vendor['fp64']:.2f}$, ${vendor['fp32']:.2f}$ and ${vendor['fp16']:.2f}$ of the time of CSR-i32 at FP64, FP32 and FP16"
                     if "fp16" in vendor else
                     rf"${vendor['fp64']:.2f}$ and ${vendor['fp32']:.2f}$ of the time of CSR-i32 at FP64 and FP32")
+    own_layout = lambda layout: (", ".join(rf"${100.0 * (own_gain[(precision, layout)][2] - 1.0):.1f}$" for precision in ("fp64", "fp32"))
+                                 + rf" and ${100.0 * (own_gain[('fp16', layout)][2] - 1.0):.1f}$ percent on "
+                                 + ", ".join(str(own_gain[(precision, layout)][0]) for precision in ("fp64", "fp32"))
+                                 + f" and {own_gain[('fp16', layout)][0]} of its {own_gain[('fp64', layout)][1]} matrices")
+    own_t = ""
+    if all((precision, layout) in own_gain for precision in ("fp64", "fp32", "fp16") for layout in ("r16", "lp")):
+        own_t = (rf"Letting each layout pick its own $T$ would save CSR-r16 a median {own_layout('r16')} at FP64, FP32 and FP16, "
+                 rf"and CSR-lp {own_layout('lp')}.")
+        if own_check:
+            own_t += ("\n" rf"At FP16 it would raise the balanced combinations of Sec.~\ref{{sec:results-limits}} on which the byte ratio predicts the speedup from {own_check[0]} to {own_check[1]} of {own_check[2]}.")
+    own_lp_text = ""
+    if own_lp:
+        triple = lambda key, source: ", ".join(rf"${own_lp[source][precision][key]:.2f}$" for precision in ("fp64", "fp32")) + rf" and ${own_lp[source]['fp16'][key]:.2f}$"
+        own_lp_text = (rf"On balanced matrices outside the L2, CSR-lp at its own $T$ has a geometric-mean byte ratio of {triple('byte_ratio', 'own')}, "
+                       rf"$K/K_{{\mathrm{{ref}}}}$ of {triple('rate_ratio', 'own')} and speedup of {triple('speedup', 'own')} at FP64, FP32 and FP16, "
+                       rf"against the {triple('speedup', 'reference')} of Table~\ref{{tab:results-gain}}.")
+    repeat_text = (rf"Repeating the FP16 campaign changes the times by a median ${100.0 * repeat[0]:.2f}$ percent."
+                   if repeat else "")
+    repeat_long = (rf"Timing the FP16 campaign a second time changes a time by a median ${100.0 * repeat[0]:.2f}$ percent, with the 90th percentile at ${100.0 * repeat[1]:.2f}$ percent, under the default clock management of the driver."
+                   if repeat else "")
     return rf"""
 \subsection{{Setup}}
 \label{{sec:results-setup}}
 
 \begin{{brief}}
-All measurements run on {device.description()}{device.toolkit()}, and $B$ is its theoretical bandwidth, ${device.theoretical_bw_gbs:.0f}$~GB/s, while Sec.~\ref{{sec:results-rate}} repeats the measurements on a Quadro RTX 5000.
-The four layouts run in one GPU kernel with $T$ threads per row and values and vectors in FP64, FP32 or FP16, and each is compared with CSR-i32 at the $T \in \{{2,4,8,16,32\}}$ fastest for CSR-i32, {brief_identity}.
+All measurements run on {device.description()}{device.toolkit()}, whose theoretical bandwidth $B$ is ${device.theoretical_bw_gbs:.0f}$~GB/s and whose L2 holds ${device.l2_mib:.0f}$~MiB, and Sec.~\ref{{sec:results-rate}} repeats them on a Quadro RTX 5000.
+The four layouts share one GPU kernel with $T$ threads per row, and values and vectors are in FP64, FP32 or FP16.
+Each layout is compared with CSR-i32 at the $T \in \{{2,4,8,16,32\}}$ that is fastest for CSR-i32, {brief_identity}.
+{own_t}
 The vendor reference is the faster of the CSR\_ALG1 and CSR\_ALG2 algorithms of \texttt{{cusparseSpMV}}.
-Each time is the median of ${reps}$ samples of at least ${min_sample_ms:g}$~ms after ${warmup}$ warm-up products, without flushing the caches, so the {resident} matrices below the ${device.l2_mib:.0f}$~MiB L2 are served from it, the most favourable case for them, since in an iterative solver other kernels can evict the matrix between two products.
-These timings, over every matrix, layout and precision, are called the campaign below.
+Each time is the median of ${reps}$ samples of at least ${min_sample_ms:g}$~ms after ${warmup}$ warm-up products.
+The caches are not flushed, so the {resident} matrices below the ${device.l2_mib:.0f}$~MiB L2 at FP64, FP32 and FP16 are served from it, the most favorable case for them, since in an iterative solver other kernels can evict the matrix between two products.
+{repeat_text}
+These timings over all matrices, layouts and precisions form the campaign.
 \end{{brief}}
 \begin{{extended}}
 All measurements run on {device.description()}{device.toolkit()}, while Sec.~\ref{{sec:results-rate}} repeats the measurements on a Quadro RTX 5000.
-$B$ is the theoretical bandwidth of the device, ${device.theoretical_bw_gbs:.0f}$~GB/s.
+$B$ is the theoretical bandwidth of the device, ${device.theoretical_bw_gbs:.0f}$~GB/s, and its L2 holds ${device.l2_mib:.0f}$~MiB.
 The four layouts of Sec.~\ref{{sec:model}} are measured with values in FP64, FP32 or FP16 and the vectors $x$ and $y$ in the same precision as the values.
 All of them run in the same GPU kernel, one vector of $T$ threads per row, and every layout is timed at each $T \in \{{2,4,8,16,32\}}$.
 A layout is compared with CSR-i32 at the $T$ that is fastest for CSR-i32 on the same matrix and precision, so the two share the balance of the work across threads (Sec.~\ref{{sec:model}}).
-\extonly{{A compressed layout is sometimes fastest at a different $T$, at FP64 on {own_gain[('fp64', 'r16')][0]} of the {own_gain[('fp64', 'r16')][1]} matrices for CSR-r16 and {own_gain[('fp64', 'lp')][0]} of {own_gain[('fp64', 'lp')][1]} for CSR-lp, where its own $T$ would make it faster by a median ${100.0 * (own_gain[('fp64', 'r16')][2] - 1.0):.1f}$ and ${100.0 * (own_gain[('fp64', 'lp')][2] - 1.0):.1f}$ per cent, a gain of tuning rather than of the encoding.}}
+{own_t}
+A gain of this kind comes from tuning rather than from the encoding, and CSR-lp gains more because its packed width grows with $T$.
+{own_lp_text}
 At a given precision the layouts keep the value array and the order of the nonzeros, so at every $T$ their results must be bit-identical to those of CSR-i32, {identity_text}.
 Every matrix is reordered with a symmetric Reverse Cuthill--McKee permutation before it is measured, which makes CSR-r16 exact on {admissible_after} of the {total} matrices instead of {admissible_before}.
 The permutation is computed once per matrix, and its cost is not part of the times, which are those of the kernel alone.
@@ -519,9 +548,10 @@ The vendor reference is the faster of the CSR\_ALG1 and CSR\_ALG2 algorithms of 
 {vendor_text}
 \extonly{{Its result differs from that of CSR-i32 by at most $\max_r |\Delta y_r| / \max_r |y_r| = {shared.scientific(cusparse_deviation['fp64'])}$ in FP64 and ${shared.scientific(cusparse_deviation['fp32'])}$ in FP32, since it sums in a different order.}}
 Each time is the median of ${reps}$ samples after ${warmup}$ warm-up products, each sample running enough consecutive products to last at least ${min_sample_ms:g}$~ms.
+{repeat_long}
 These timings, over every matrix, layout and precision, are called the campaign below.
-The products run back to back without flushing the caches, so the {resident} matrices whose working set at FP64 is below the ${device.l2_mib:.0f}$~MiB L2 are served from it.
-This is the most favourable case for these matrices, since the same matrix and the same $x$ stay in the L2 from one product to the next, while in an iterative solver $x$ changes at every iteration and the other kernels stream their vectors through the L2 between two products and can evict the matrix.
+The products run back to back without flushing the caches, so the {resident} matrices whose working set at FP64, FP32 and FP16 is below the ${device.l2_mib:.0f}$~MiB L2 are served from it.
+This is the most favorable case for these matrices, since the same matrix and the same $x$ stay in the L2 from one product to the next, while in an iterative solver $x$ changes at every iteration and the other kernels stream their vectors through the L2 between two products and can evict the matrix.
 On the matrices above the L2 the matrix is read again from the DRAM at every product in either case.
 \end{{extended}}
 """
@@ -575,24 +605,30 @@ def gain_table_lines(records):
                 cells.append(rf"${geometric_mean([record['layouts'][layout]['byte_ratio'] for record in group]):.2f}$")
                 cells.append(rf"${geometric_mean([record['layouts'][layout]['speedup'] / record['layouts'][layout]['byte_ratio'] for record in group]):.2f}$")
                 cells.append(rf"${geometric_mean([record['layouts'][layout]['speedup'] for record in group]):.2f}$")
-            count = len([record for record in with_layout(of_precision(records, "fp64"), layout) if regime_of(record) == regime])
+            count = "/".join(str(len([record for record in with_layout(of_precision(records, precision), layout)
+                                      if regime_of(record) == regime])) for precision, _, _ in PRECISIONS)
             lines.append(rf"\quad {label} & {count} & " + " & ".join(cells) + r" \\")
     return lines
 
 
-def performance_tex(table, device):
+def performance_tex(table, device, records=None):
     matrices, summary = performance_summary(table, device)
+    moved = {precision: sum(1 for record in of_precision(records or [], precision)
+                            if record["matrix"] in matrices and record["resident"]) for precision in ("fp32", "fp16")}
+    moved_text = (f" At FP32 and FP16, {moved['fp32']} and {moved['fp16']} of them fit in the L2."
+                  if any(moved.values()) else "")
     cell = lambda precision, layout, index: summary[(precision, layout)][index]
     triple = lambda precision, index: (f"{cell(precision, 'i32', index):.0f}, {cell(precision, 'r16', index):.0f} "
                                        f"and {cell(precision, 'lp', index):.0f}")
     return rf"""
-Fig.~\ref{{fig:performance}} states the same measurements in absolute terms on the {len(matrices)} matrices on which CSR-r16 and CSR-lp are both exact and whose working set at FP64 exceeds the L2, each bar against the memory roof $2B/q$ of its own traffic.
-A narrower index raises the bar and its roof together, while the distance from each bar to its own roof widens as the values narrow.
+Fig.~\ref{{fig:performance}} shows the same measurements in absolute terms, on the {len(matrices)} matrices where CSR-r16 and CSR-lp are both exact and the working set at FP64 exceeds the L2.
+\extonly{{Each bar is drawn against the memory roof $2B/q$ of its own traffic.}}
+A narrower index raises both the bar and its roof, but the gap between them widens as the values narrow.
 
 \begin{{figure}}[t]
   \centering
   \includegraphics[width=\columnwidth]{{figures/performance.pdf}}
-  \caption{{Performance of each layout at the three value precisions on the {len(matrices)} matrices on which CSR-r16 and CSR-lp are both exact and whose working set at FP64 exceeds the L2, median with the interquartile range, and as a tick the memory roof $2B/q$ of that configuration.
+  \caption{{Performance of each layout at the three value precisions on the {len(matrices)} matrices on which CSR-r16 and CSR-lp are both exact and whose working set at FP64 exceeds the L2, median with the interquartile range, and as a tick the memory roof $2B/q$ of that configuration.{moved_text}
   cuSPARSE at FP16 reads FP16 values and sums in FP32.}}
   \label{{fig:performance}}
 \end{{figure}}
@@ -640,8 +676,8 @@ def gain_tex(records, vendor_profile=None):
         ratios = [record["layouts"]["r16"]["over_cusparse"] for record in with_layout(of_precision(records, precision), "r16")
                   if regime_of(record) == "domain" and record["layouts"]["r16"]["over_cusparse"]]
         vendor_even[precision] = (geometric_mean(ratios), sum(1 for value in ratios if value < 1.0), len(ratios))
-    vendor_text = (rf"On balanced matrices CSR-r16 is also faster than cuSPARSE, by a geometric mean of ${vendor_even['fp64'][0]:.2f}\times$, ${vendor_even['fp32'][0]:.2f}\times$ and ${vendor_even['fp16'][0]:.2f}\times$ at FP64, FP32 and FP16, "
-                   rf"and slower on {vendor_even['fp64'][1]}, {vendor_even['fp32'][1]} and {vendor_even['fp16'][1]} of {vendor_even['fp64'][2]}, {vendor_even['fp32'][2]} and {vendor_even['fp16'][2]} matrices.")
+    vendor_text = (rf"On balanced matrices CSR-r16 also beats cuSPARSE, by a geometric mean of ${vendor_even['fp64'][0]:.2f}\times$, ${vendor_even['fp32'][0]:.2f}\times$ and ${vendor_even['fp16'][0]:.2f}\times$ at FP64, FP32 and FP16, "
+                   rf"and loses only on {vendor_even['fp64'][1]} of {vendor_even['fp64'][2]}, {vendor_even['fp32'][1]} of {vendor_even['fp32'][2]} and {vendor_even['fp16'][1]} of {vendor_even['fp16'][2]} matrices.")
     if vendor_profile:
         vendor_text += ("\n" + rf"\extonly{{Nsight Compute on {vendor_profile['matrices']} of the matrices shows that each call of cuSPARSE also runs, before its SpMV kernel, a kernel of ${vendor_profile['scale'][0]:.1f}$ to ${vendor_profile['scale'][1]:.1f}$~\textmu s that scales $y$, which weighs only on short products.}}")
     relative_wins = {precision: sum(1 for record in with_layout(of_precision(records, precision), "r16")
@@ -700,14 +736,20 @@ def gain_tex(records, vendor_profile=None):
 \subsection{{Speedup of the compressed layouts}}
 \label{{sec:results-gain}}
 
-Table~\ref{{tab:results-gain}} gives the geometric means of the byte ratio $q_{{\mathrm{{ref}}}}/q$ of Eq.~\eqref{{eq:q-layouts}}, of the rate ratio $K/K_{{\mathrm{{ref}}}}$ and of the speedup over CSR-i32 in three regimes, on balanced matrices, with a working set above the L2 and the longest row at most {IMBALANCE_LIMIT:g} times the mean, on unbalanced matrices, and in the L2, and Fig.~\ref{{fig:speedup}} gives the speedup of each layout on every matrix, sorted.
-On balanced matrices the rate ratio is close to one at FP64 and falls as the values narrow, while on unbalanced matrices and in the L2 it departs further from one, for the reasons of Sec.~\ref{{sec:results-limits}}.
-No byte ratio exceeds $r_{{\max}}$, the first row of the table, and since CSR-r16 keeps two of the four index bytes, it obtains a median ${captured['fp64']:.0f}$, ${captured['fp32']:.0f}$ and ${captured['fp16']:.0f}$ per cent of the byte saving that $r_{{\max}}$ allows at FP64, FP32 and FP16, so the room left to an index narrower than 16 bits grows as the values narrow.
+Table~\ref{{tab:results-gain}} gives the geometric means of the byte ratio $q_{{\mathrm{{ref}}}}/q$ of Eq.~\eqref{{eq:q-layouts}}, the efficiency factor $K/K_{{\mathrm{{ref}}}}$ and the speedup over CSR-i32, and Fig.~\ref{{fig:speedup}} gives the speedup of each layout on every matrix.
+The matrices fall into three regimes.
+The matrices whose working set $Q$ of CSR-i32 at that precision fits in the L2 form the third regime.
+The others are balanced when their longest row is at most {IMBALANCE_LIMIT:g} times the mean, $\ell_{{\max}}/\ell \le {IMBALANCE_LIMIT:g}$, and unbalanced otherwise.
+On balanced matrices the efficiency factor is close to one at FP64 and falls as the values narrow.
+On unbalanced matrices and in the L2 it moves further from one, for the reasons given in Sec.~\ref{{sec:results-limits}}.
+The first row of Table~\ref{{tab:results-gain}} gives $r_{{\max}}$, the byte ratio of an index of zero bytes and so the ceiling of any index compression.
 {vendor_text}
-\extonly{{Unlike the first factor, the rate ratio is known only once both kernels have been timed, since $K$ is $Q$ over the measured time, and Sec.~\ref{{sec:results-rate}} measures what it consists of.}}
+\extonly{{Unlike the byte ratio, the efficiency factor is known only once both kernels have been timed, since $K$ is $Q$ over the measured time, and Sec.~\ref{{sec:results-rate}} measures what it consists of.}}
 \begin{{brief}}
-CSR-i16 is exact only on {len(absolute_fp64)} small matrices, of which {absolute_tiny['fp64']} at FP64 and {absolute_tiny['fp16']} at FP16 lie below half of the L2, where the time follows launch and latency rather than bytes, so its median speedup drops from ${median([record["layouts"]["i16"]["speedup"] for record in absolute_fp64]):.2f}\times$ at FP64 to ${median([record["layouts"]["i16"]["speedup"] for record in absolute_fp16]):.2f}\times$ at FP16.
-CSR-lp is slower than CSR-i32 on {losses['fp64'][0]}, {losses['fp32'][0]} and {losses['fp16'][0]} of its {losses['fp64'][1]} matrices at FP64, FP32 and FP16, almost all unbalanced, in the L2, or with rows so short that it moves at least as many bytes as CSR-i32.
+CSR-i16 is exact only on {len(absolute_fp64)} small matrices.
+Of these, {absolute_tiny['fp64']} at FP64 and {absolute_tiny['fp16']} at FP16 lie below half of the L2, where launch and latency rather than bytes set the time, so its median speedup drops from ${median([record["layouts"]["i16"]["speedup"] for record in absolute_fp64]):.2f}\times$ at FP64 to ${median([record["layouts"]["i16"]["speedup"] for record in absolute_fp16]):.2f}\times$ at FP16.
+CSR-lp is slower than CSR-i32 on {losses['fp64'][0]}, {losses['fp32'][0]} and {losses['fp16'][0]} of its {losses['fp64'][1]} matrices at FP64, FP32 and FP16.
+Almost all of them are unbalanced, fit in the L2, or have rows so short that CSR-lp moves at least as many bytes as CSR-i32.
 \end{{brief}}
 \begin{{extended}}
 From FP64 to FP16 the median byte ratio of CSR-i16 grows from ${median([record["layouts"]["i16"]["byte_ratio"] for record in absolute_fp64]):.2f}$ to ${median([record["layouts"]["i16"]["byte_ratio"] for record in absolute_fp16]):.2f}$, while its median speedup drops from ${median([record["layouts"]["i16"]["speedup"] for record in absolute_fp64]):.2f}\times$ to ${median([record["layouts"]["i16"]["speedup"] for record in absolute_fp16]):.2f}\times$.
@@ -716,13 +758,13 @@ On the {len(absolute_outside)} of them that stay outside the L2 at FP16 its spee
 CSR-lp is slower than CSR-i32 on {losses['fp64'][0]}, {losses['fp32'][0]} and {losses['fp16'][0]} of its {losses['fp64'][1]} matrices at FP64, FP32 and FP16, and almost all of them fail one of the conditions of Sec.~\ref{{sec:results-limits}}.
 On {slow['bytes'][0]}, {slow['bytes'][1]} and {slow['bytes'][2]} of them it moves at least as many bytes as CSR-i32, since their rows hold a median of ${losses['fp64'][5]:.1f}$ nonzeros and the nine bytes per row of Eq.~\eqref{{eq:q-lane}} outweigh the index bits saved.
 On {slow['uneven'][0]}, {slow['uneven'][1]} and {slow['uneven'][2]} the longest rows set the time and the decoding lengthens them, down to ${min(losses[p][3] for p, _, _ in PRECISIONS):.2f}\times$ on \texttt{{{lowest_lane}}}, and on {slow['cache'][0]}, {slow['cache'][1]} and {slow['cache'][2]} the matrix fits in the L2, more of them as the values narrow and the working set shrinks.
-The remaining {slow['even'][0]}, {slow['even'][1]} and {slow['even'][2]}, balanced and outside the L2, have a byte ratio of at most ${slow_even_ratio:.2f}$ and lose at most ${100.0 * (1.0 - slow_even_speedup):.0f}$ per cent.
+The remaining {slow['even'][0]}, {slow['even'][1]} and {slow['even'][2]}, balanced and outside the L2, have a byte ratio of at most ${slow_even_ratio:.2f}$ and lose at most ${100.0 * (1.0 - slow_even_speedup):.0f}$ percent.
 \end{{extended}}
 {lane_versus_relative}
 
 \begin{{table}}[t]
 \centering
-\caption{{\scriptsize Geometric means of the byte ratio, the rate ratio and the speedup over CSR-i32 per regime, after RCM. The first row is the bound $r_{{\max}}$ of Eq.~\eqref{{eq:rmax}}, over all {len(of_precision(records, 'fp64'))} matrices. The count $n$ is that at FP64, and as the values narrow some matrices move into the L2.}}
+\caption{{\scriptsize Geometric means of the byte ratio, the efficiency factor and the speedup over CSR-i32 per regime, after RCM. The first row is the bound $r_{{\max}}$ of Eq.~\eqref{{eq:rmax}}, over all {len(of_precision(records, 'fp64'))} matrices. The counts $n$ are at FP64, FP32 and FP16, since as the values narrow some matrices move into the L2. CSR-i16, exact only on {len(with_layout(of_precision(records, 'fp64'), 'i16'))} small matrices, is discussed in the text.}}
 \label{{tab:results-gain}}
 \footnotesize
 \setlength{{\tabcolsep}}{{2.2pt}}
@@ -774,7 +816,7 @@ def band_tex(records):
                    record["layouts"]["r16"]["band"][0] / record["layouts"]["r16"]["speedup"]) - 1.0
                for precision, _, _ in PRECISIONS for record in band_subset(records, precision, "r16")
                if not inside_band(record["layouts"]["r16"])]
-    narrow_text = (rf"The speedups outside it lie at most ${100.0 * max(outside or [0.0]):.1f}$ per cent from an end, and the one farthest in units of the band is \texttt{{{narrow[0]['matrix'].replace('_', chr(92) + '_')}}}, whose rows hold ${narrow[0]['row_length']:.1f}$ nonzeros on average, so that CSR-r16 saves almost nothing there and its band is narrower than one per cent." + "\n"
+    narrow_text = (rf"The speedups outside it lie at most ${100.0 * max(outside or [0.0]):.1f}$ percent from an end, and the one farthest in units of the band is \texttt{{{narrow[0]['matrix'].replace('_', chr(92) + '_')}}}, whose rows hold ${narrow[0]['row_length']:.1f}$ nonzeros on average, so that CSR-r16 saves almost nothing there and its band is narrower than one percent." + "\n"
                    if narrow else "")
     return rf"""
 \begin{{extended}}
@@ -785,7 +827,7 @@ The band of Eq.~\eqref{{eq:band}} assumes that the two runs retire their real by
 That limit falls in the gap between ${below_limit:.1f}$ and ${above_limit:.1f}$ of the distribution of that ratio over the matrices served from the DRAM.
 Fig.~\ref{{fig:band}} draws the band of every such matrix on the axis of the speedup together with the measured value.
 CSR-r16 falls inside it on {cell('fp64', 'r16')} matrices at FP64, {cell('fp32', 'r16')} at FP32 and {cell('fp16', 'r16')} at FP16.
-The band contains these speedups through its width rather than through the gather, since on balanced matrices the DRAM delivers the counted bytes within a few per cent and the shortfall from the byte ratio is the lower bandwidth of the compressed kernel (Sec.~\ref{{sec:results-rate}}).
+The band contains these speedups through its width rather than through the gather, since on balanced matrices the DRAM delivers the counted bytes within a few percent and the shortfall from the byte ratio is the lower bandwidth of the compressed kernel (Sec.~\ref{{sec:results-rate}}).
 {narrow_text}The band is a median ${width['fp64']:.2f}\times$ wide at FP64, ${width['fp32']:.2f}\times$ at FP32 and ${width['fp16']:.2f}\times$ at FP16.
 Its lower end charges a whole $32$-byte sector to every gather, which is the most a gather can cost, and a sector weighs more against narrower values, so the band constrains the speedup at FP64 far more than at FP16.
 CSR-lp falls inside it on {cell('fp64', 'lp')}, {cell('fp32', 'lp')} and {cell('fp16', 'lp')} matrices.
@@ -795,7 +837,7 @@ On the matrices served from the DRAM with longer rows than the limit, it falls b
 \begin{{figure*}}[t]
   \centering
   \includegraphics[width=\textwidth]{{figures/band.pdf}}
-  \caption{{Gather band of Eq.~\eqref{{eq:band}} (grey bars) and measured speedup over CSR-i32 (dots, crosses when outside the band) on the matrices served from the DRAM whose longest row is at most {IMBALANCE_LIMIT:g} times the mean, sorted by the upper end of the band, $q_{{\mathrm{{ref}}}}/q$.
+  \caption{{Gather band of Eq.~\eqref{{eq:band}} (gray bars) and measured speedup over CSR-i32 (dots, crosses when outside the band) on the matrices served from the DRAM whose longest row is at most {IMBALANCE_LIMIT:g} times the mean, sorted by the upper end of the band, $q_{{\mathrm{{ref}}}}/q$.
   The lower end of each bar charges a $32$-byte sector to every gather on $x$, the upper end reads $x$ once.}}
   \label{{fig:band}}
 \end{{figure*}}
@@ -863,6 +905,8 @@ def rate_measurements(study_dir, list_path, original_csv):
                     "counted_layout": counted[(matrix, precision, layout)] / candidate["dram__bytes_read.sum"],
                     "spread": reference["sm__cycles_active.max"] / reference["sm__cycles_active.avg"],
                     "per_load": per_load(candidate) / per_load(reference),
+                    "loads": (candidate["smsp__inst_executed_op_global_ld.sum"]
+                              / reference["smsp__inst_executed_op_global_ld.sum"]),
                     "instructions": candidate["smsp__inst_executed.sum"] / reference["smsp__inst_executed.sum"],
                     "busy_reference": reference["dram__throughput.avg.pct_of_peak_sustained_elapsed"],
                     "busy_layout": candidate["dram__throughput.avg.pct_of_peak_sustained_elapsed"],
@@ -875,6 +919,28 @@ def rate_measurements(study_dir, list_path, original_csv):
     return measurements
 
 
+def ordering_check(original_csv, reordered_csv, device, characterization):
+    """The prediction on balanced matrices outside the L2 in the original ordering and after RCM, both
+    timed by the same build with each layout at its own fastest threads per row: per precision, the
+    combinations of matrix and layout within PREDICTION_TOLERANCE and their number, and the median byte
+    ratio of CSR-lp at FP64. None when either campaign is missing."""
+    if original_csv is None or reordered_csv is None or not original_csv.is_file() or not reordered_csv.is_file():
+        return None
+    result = {}
+    for name, path in (("original", original_csv), ("rcm", reordered_csv)):
+        records = summarize(shared.load_measurements(path), device, characterization)
+        check = validity(records)
+        result[name] = {precision: (sum(check[("domain", layout, precision)][2] for layout in ("lp", "r16")
+                                        if ("domain", layout, precision) in check),
+                                    sum(check[("domain", layout, precision)][0] for layout in ("lp", "r16")
+                                        if ("domain", layout, precision) in check))
+                        for precision, _, _ in PRECISIONS}
+        result[name]["lp_ratio"] = median([record["layouts"]["lp"]["byte_ratio"]
+                                           for record in with_layout(of_precision(records, "fp64"), "lp")
+                                           if regime_of(record) == "domain"])
+    return result
+
+
 def regime_of(record):
     """Where a matrix lies against the domain of the model: in the L2, with uneven rows, or inside."""
     if record["resident"]:
@@ -883,20 +949,22 @@ def regime_of(record):
 
 
 def validity(records):
-    """Per regime, compressed layout and precision: the number of matrices, the median of K/K_ref, and
-    the matrices on which the byte ratio predicts the speedup within PREDICTION_TOLERANCE."""
+    """Per regime, compressed layout and precision: the number of matrices, the median of K/K_ref, the
+    matrices on which the byte ratio predicts the speedup within PREDICTION_TOLERANCE, the lowest and
+    highest K/K_ref, and the matrices on which a constant speedup of one would be within the same margin."""
     result = {}
     for precision, _, _ in PRECISIONS:
         for layout in ("r16", "lp"):
             for regime in ("domain", "uneven", "cache"):
-                ratios = [record["layouts"][layout]["speedup"] / record["layouts"][layout]["byte_ratio"]
-                          for record in with_layout(of_precision(records, precision), layout)
+                chosen = [record["layouts"][layout] for record in with_layout(of_precision(records, precision), layout)
                           if regime_of(record) == regime]
+                ratios = [entry["speedup"] / entry["byte_ratio"] for entry in chosen]
                 if ratios:
                     result[(regime, layout, precision)] = (
                         len(ratios), median(ratios),
                         sum(1 for ratio in ratios if abs(ratio - 1.0) <= PREDICTION_TOLERANCE),
-                        min(ratios), max(ratios))
+                        min(ratios), max(ratios),
+                        sum(1 for entry in chosen if abs(entry["speedup"] - 1.0) <= PREDICTION_TOLERANCE))
     return result
 
 
@@ -1088,7 +1156,7 @@ def prediction_figure(points, figures_dir):
     return [point for point in points if point["regime"] == "domain"]
 
 
-def limits_tex(records, figures_dir, measurements):
+def limits_tex(records, figures_dir, measurements, ordering=None):
     from analyse_stalls import spearman
     points = limits_points(records)
     limits_figure(points, measurements, records, figures_dir)
@@ -1135,6 +1203,9 @@ def limits_tex(records, figures_dir, measurements):
     domain_fp16 = median([check[("domain", layout, "fp16")][1] for layout in ("lp", "r16")])
     lowest_uneven = min(check[("uneven", layout, precision)][3] for layout in ("lp", "r16")
                         for precision, _, _ in PRECISIONS if ("uneven", layout, precision) in check)
+    lowest_record = min((record["layouts"][layout] for record in records if regime_of(record) == "uneven"
+                         for layout in ("lp", "r16") if layout in record["layouts"]),
+                        key=lambda entry: entry["speedup"] / entry["byte_ratio"])
     cache_range = [value for layout in ("lp", "r16") for precision, _, _ in PRECISIONS
                    if ("cache", layout, precision) in check
                    for value in (check[("cache", layout, precision)][3], check[("cache", layout, precision)][4])]
@@ -1146,14 +1217,16 @@ def limits_tex(records, figures_dir, measurements):
                   rf"Below half of the L2 a product takes a median of ${tiny_time:.0f}$~\textmu s with any layout, so the speedup is ${tiny_speedup:.2f}$ whatever the byte ratio and $K/K_{{\mathrm{{ref}}}}$ falls to $q/q_{{\mathrm{{ref}}}}$ (Fig.~\ref{{fig:limits}}A, top)." "\n"
                   rf"$K/K_{{\mathrm{{ref}}}}$ rises well above one only at the edge of the L2, up to ${peak[0]:.2f}$ on \texttt{{{peak[1]}}}, where the working set of the compressed layout still fits in the L2 and that of CSR-i32 no longer does."),
         "balance": rf"Over the campaign $K/K_{{\mathrm{{ref}}}}$ falls past the limit, as low as ${lowest_uneven:.2f}$ (Fig.~\ref{{fig:limits}}B, top).",
-        "cache_brief": (rf"Below half of the L2 a product takes a median of ${tiny_time:.0f}$~\textmu s with any layout, so the speedup is ${tiny_speedup:.2f}$ whatever the byte ratio and $K/K_{{\mathrm{{ref}}}}$ falls to $q/q_{{\mathrm{{ref}}}}$ (Fig.~\ref{{fig:limits}}A)." "\n"
-                        rf"$K/K_{{\mathrm{{ref}}}}$ rises well above one only at the edge of the L2, up to ${peak[0]:.2f}$ on \texttt{{{peak[1]}}}, where the working set of the compressed layout still fits in the L2 and that of CSR-i32 no longer does."),
+        "cache_brief": (rf"Below half of the L2 a product takes a median ${tiny_time:.0f}$~\textmu s with any layout." "\n"
+                        rf"The speedup is then ${tiny_speedup:.2f}$ whatever the byte ratio, and $K/K_{{\mathrm{{ref}}}}$ falls to $q/q_{{\mathrm{{ref}}}}$ (Fig.~\ref{{fig:limits}}A)." "\n"
+                        rf"$K/K_{{\mathrm{{ref}}}}$ rises well above one only at the edge of the L2, up to ${peak[0]:.2f}$ on \texttt{{{peak[1]}}}, where the compressed layout still fits in the L2 and CSR-i32 no longer does."),
         "lowest_uneven": f"{lowest_uneven:.2f}",
+        "lowest_speedup": f"{lowest_record['speedup']:.2f}",
         "figure": rf"""\begin{{brief}}
 \begin{{figure*}}[t]
   \centering
   \includegraphics[width=\textwidth]{{figures/limits_brief.pdf}}
-  \caption{{The three factors. \textbf{{A}} $K/K_{{\mathrm{{ref}}}}$ of CSR-r16 and CSR-lp over the campaign on balanced matrices, one point per matrix, precision and layout, with a grey band ${100.0 * PREDICTION_TOLERANCE:.0f}$ per cent from one. \textbf{{B}} Active cycles of the busiest multiprocessor over the mean, for CSR-i32 on the profiled matrices outside the L2. \textbf{{C}} Share of the time the DRAM is busy against the DRAM bytes per load, both over CSR-i32, on the profiled balanced matrices outside the L2, with the dashed line where the two are equal.}}
+  \caption{{The three factors. \textbf{{A}} $K/K_{{\mathrm{{ref}}}}$ of CSR-r16 and CSR-lp over the campaign on balanced matrices, one point per matrix, precision and layout, gray band within ${100.0 * PREDICTION_TOLERANCE:.0f}$ percent. \textbf{{B}} Busiest multiprocessor over the mean for CSR-i32, profiled matrices outside the L2. \textbf{{C}} DRAM busy share against DRAM bytes per load, both over CSR-i32, profiled balanced matrices outside the L2, dashed where equal.}}
   \label{{fig:limits}}
 \end{{figure*}}
 \end{{brief}}
@@ -1161,12 +1234,15 @@ def limits_tex(records, figures_dir, measurements):
 \begin{{figure*}}[t]
   \centering
   \includegraphics[width=\textwidth]{{figures/limits.pdf}}
-  \caption{{The three factors against their indicators. Top row, $K/K_{{\mathrm{{ref}}}}$ of CSR-r16 and CSR-lp over the campaign, one point per matrix, precision and layout, each panel on the matrices that meet the other two conditions, with a grey band ${100.0 * PREDICTION_TOLERANCE:.0f}$ per cent from one and, in \textbf{{C}}, the dashed line $K/K_{{\mathrm{{ref}}}} = q/q_{{\mathrm{{ref}}}}$ of a speedup of one. Bottom row, the counter that explains each factor on the profiled matrices, \textbf{{A}} the bytes the DRAM delivers over $Q$, \textbf{{B}} the active cycles of the busiest multiprocessor over the mean, \textbf{{C}} the share of the time the DRAM is busy over that of CSR-i32 against the DRAM bytes per load over CSR-i32.}}
+  \caption{{The three factors against their indicators. Top row, $K/K_{{\mathrm{{ref}}}}$ of CSR-r16 and CSR-lp over the campaign, one point per matrix, precision and layout, each panel on the matrices that meet the other two conditions, with a gray band ${100.0 * PREDICTION_TOLERANCE:.0f}$ percent from one and, in \textbf{{C}}, the dashed line $K/K_{{\mathrm{{ref}}}} = q/q_{{\mathrm{{ref}}}}$ of a speedup of one. Bottom row, the counter that explains each factor on the profiled matrices, \textbf{{A}} the bytes the DRAM delivers over $Q$, \textbf{{B}} the active cycles of the busiest multiprocessor over the mean, \textbf{{C}} the share of the time the DRAM is busy over that of CSR-i32 against the DRAM bytes per load over CSR-i32.}}
   \label{{fig:limits}}
 \end{{figure*}}
 \end{{extended}}
 """,
-        "flight": (rf"On balanced matrices outside the L2 the speedup grows as the values narrow, yet it reaches a median ${kept['fp64']:.2f}$, ${kept['fp32']:.2f}$ and ${kept['fp16']:.2f}$ of the gain $q_{{\mathrm{{ref}}}}/q - 1$ that the byte ratio would give at an unchanged rate, at FP64, FP32 and FP16, and $K/K_{{\mathrm{{ref}}}}$ of CSR-r16 varies more from matrix to matrix, with an interquartile range of ${spread_fp64:.2f}$ at FP64 and ${spread_fp16:.2f}$ at FP16, so the more the index weighs in the bytes, the less of its saving reaches the time and the less the byte ratio alone tells about a single matrix." "\n"
+        "flight": (rf"On balanced matrices outside the L2 the speedup grows as the values narrow." "\n"
+                   rf"Yet it captures a median ${kept['fp64']:.2f}$, ${kept['fp32']:.2f}$ and ${kept['fp16']:.2f}$ of the gain $q_{{\mathrm{{ref}}}}/q - 1$ promised by the byte ratio at FP64, FP32 and FP16." "\n"
+                   rf"\extonly{{$K/K_{{\mathrm{{ref}}}}$ of CSR-r16 also varies more between matrices, with an interquartile range of ${spread_fp64:.2f}$ at FP64 and ${spread_fp16:.2f}$ at FP16 on the A100.}}" "\n"
+                   rf"The more the index weighs in the bytes, the less of its saving reaches the time, and the less the byte ratio tells about a single matrix." "\n"
                    rf"\extonly{{The loss is not a fixed fraction of the saving, since fitting $1-K/K_{{\mathrm{{ref}}}} = k\,(1-q/q_{{\mathrm{{ref}}}})$ gives $k = {slopes['fp64']:.2f}$ at FP64, ${slopes['fp32']:.2f}$ at FP32 and ${slopes['fp16']:.2f}$ at FP16.}}"),
     }
     value_width = {key: size for key, _, size in PRECISIONS}
@@ -1182,26 +1258,31 @@ def limits_tex(records, figures_dir, measurements):
         rates.append(record["layouts"]["r16"]["speedup"] / record["layouts"]["r16"]["byte_ratio"])
     rereads_rho, rate_rho = (spearman(positions, rereads), spearman(positions, rates)) if positions else (0.0, 0.0)
     pooled = lambda precision: (sum(check[("domain", layout, precision)][2] for layout in ("lp", "r16")),
-                                sum(check[("domain", layout, precision)][0] for layout in ("lp", "r16")))
+                                sum(check[("domain", layout, precision)][0] for layout in ("lp", "r16")),
+                                sum(check[("domain", layout, precision)][5] for layout in ("lp", "r16")))
+    procedure = (rf"Before implementation, the byte ratio can thus be taken as the speedup when the layout is exact on the matrix, the working set of CSR-i32 exceeds the L2, the longest row is at most {IMBALANCE_LIMIT:g} times the mean and the values are in FP64 or FP32.")
     rest = rf"""
 \begin{{brief}}
-On balanced matrices outside the L2 the byte ratio predicts the speedup within ${100.0 * PREDICTION_TOLERANCE:.0f}$ per cent on {pooled('fp64')[0]} of the {pooled('fp64')[1]} combinations of matrix and layout at FP64, {pooled('fp32')[0]} of {pooled('fp32')[1]} at FP32 and only {pooled('fp16')[0]} of {pooled('fp16')[1]} at FP16.
+On balanced matrices outside the L2 the byte ratio predicts the speedup within ${100.0 * PREDICTION_TOLERANCE:.0f}$ percent ($|K/K_{{\mathrm{{ref}}}} - 1| \le {PREDICTION_TOLERANCE:g}$) on {pooled('fp64')[0]} of the {pooled('fp64')[1]} combinations of a matrix with CSR-r16 or CSR-lp at FP64, {pooled('fp32')[0]} of {pooled('fp32')[1]} at FP32 and only {pooled('fp16')[0]} of {pooled('fp16')[1]} at FP16.
+Assuming no speedup at all would fall within the same margin on only {pooled('fp64')[2]}, {pooled('fp32')[2]} and {pooled('fp16')[2]} of them.
 \end{{brief}}
+{procedure}
 \begin{{extended}}
-Where neither the cache nor the balance of the rows acts, on balanced matrices outside the L2, the byte ratio predicts the speedup within ${100.0 * PREDICTION_TOLERANCE:.0f}$ per cent on {within('domain', 'lp', 'fp64')} matrices for CSR-lp and {within('domain', 'r16', 'fp64')} for CSR-r16 at FP64, and on {within('domain', 'lp', 'fp32')} and {within('domain', 'r16', 'fp32')} at FP32.
+Where neither the cache nor the balance of the rows acts, on balanced matrices outside the L2, the byte ratio predicts the speedup within ${100.0 * PREDICTION_TOLERANCE:.0f}$ percent on {within('domain', 'lp', 'fp64')} matrices for CSR-lp and {within('domain', 'r16', 'fp64')} for CSR-r16 at FP64, and on {within('domain', 'lp', 'fp32')} and {within('domain', 'r16', 'fp32')} at FP32.
+A constant speedup of one would fall within the same margin on only {pooled('fp64')[2]} of the {pooled('fp64')[1]} combinations of matrix and layout at FP64 and {pooled('fp32')[2]} of {pooled('fp32')[1]} at FP32.
 On all {len(misses)} matrices it misses at FP64 and FP32 the byte ratio overestimates the speedup, with $K/K_{{\mathrm{{ref}}}}$ between ${min(point['rate_ratio'] for point in misses):.2f}$ and ${max(point['rate_ratio'] for point in misses):.2f}$, and they lie at the edges of the first and third conditions, with a median working set of ${median([point['working_set'] for point in misses]):.1f}$ times the L2 against ${median([point['working_set'] for point in hits]):.1f}$ for the matrices it predicts and a median $q/q_{{\mathrm{{ref}}}}$ of ${median([point['load_ratio'] for point in misses]):.2f}$ against ${median([point['load_ratio'] for point in hits]):.2f}$.
-At FP16 it does so on {within('domain', 'lp', 'fp16')} and {within('domain', 'r16', 'fp16')}, and the speedup falls short of it by a median ${100.0 * (1.0 - domain_fp16):.0f}$ per cent, a median $K/K_{{\mathrm{{ref}}}}$ of ${domain_fp16:.2f}$, the third factor.
+At FP16 it does so on {within('domain', 'lp', 'fp16')} and {within('domain', 'r16', 'fp16')}, and the speedup falls short of it by a median ${100.0 * (1.0 - domain_fp16):.0f}$ percent, a median $K/K_{{\mathrm{{ref}}}}$ of ${domain_fp16:.2f}$, the third factor.
 Outside the L2 the DRAM delivers about the bytes $Q$, so the excess of the gather is close to zero and the real byte ratio is the upper end of the band of Eq.~\eqref{{eq:band}} rather than a point inside it.
 The lower end, which charges a whole transaction to every gather, is the most pessimistic count of the bytes, and {below['uneven'][0]} of the {below['uneven'][1]} combinations of matrix, precision and layout on unbalanced matrices fall below it, so their loss comes from the rate of the kernel and not from its bytes\extonly{{ (Fig.~\ref{{fig:prediction}})}}.
 Inside the band the position of a speedup does not follow the rereads of $x$, with a rank correlation of ${rereads_rho:+.2f}$ with them for CSR-r16 on the profiled balanced matrices against ${rate_rho:+.2f}$ with $K/K_{{\mathrm{{ref}}}}$, so the band bounds the bytes and does not explain the speedup.
 In the L2 the band does not apply, since the cache serves part of the matrix and of $x$ differently for each layout, and {below['cache'][0]} of the {below['cache'][1]} combinations there fall below its lower end as well.
-The byte ratio is therefore a prediction within ${100.0 * PREDICTION_TOLERANCE:.0f}$ per cent on balanced matrices at FP64 and FP32 and an upper estimate at FP16, while on unbalanced matrices and in the L2 $K/K_{{\mathrm{{ref}}}}$ departs from one in either direction and Eq.~\eqref{{eq:srate}} relates the speedup to the byte ratio only through it.
+The byte ratio is therefore a prediction within ${100.0 * PREDICTION_TOLERANCE:.0f}$ percent on balanced matrices at FP64 and FP32 and an upper estimate at FP16, while on unbalanced matrices and in the L2 $K/K_{{\mathrm{{ref}}}}$ departs from one in either direction and Eq.~\eqref{{eq:srate}} relates the speedup to the byte ratio only through it.
 \end{{extended}}
 
 \begin{{extended}}
 \begin{{table}}[t]
 \centering
-\caption{{Matrices on which the byte ratio predicts the speedup within ${100.0 * PREDICTION_TOLERANCE:.0f}$ per cent, out of those on which the layout is exact, and in parentheses the median $K/K_{{\mathrm{{ref}}}}$, per regime, after RCM.}}
+\caption{{Matrices on which the byte ratio predicts the speedup within ${100.0 * PREDICTION_TOLERANCE:.0f}$ percent, out of those on which the layout is exact, and in parentheses the median $K/K_{{\mathrm{{ref}}}}$, per regime, after RCM.}}
 \label{{tab:results-limits}}
 \footnotesize
 \setlength{{\tabcolsep}}{{3pt}}
@@ -1220,7 +1301,7 @@ regime & layout & FP64 & FP32 & FP16 \\
 \begin{{figure*}}[t]
   \centering
   \includegraphics[width=\textwidth]{{figures/prediction.pdf}}
-  \caption{{Measured speedup over CSR-i32 of CSR-r16 and CSR-lp (markers) and gather band of Eq.~\eqref{{eq:band}} (grey bars), one row per regime and one column per precision, matrices sorted by the byte ratio $q_{{\mathrm{{ref}}}}/q$. The top of each bar is the byte ratio, which the measured traffic matches outside the L2, and the bottom charges a whole transaction to every gather, so a marker below its bar, in black, loses to the rate of the kernel more than any count of the bytes allows. Each panel has its own speedup axis.}}
+  \caption{{Measured speedup over CSR-i32 of CSR-r16 and CSR-lp (markers) and gather band of Eq.~\eqref{{eq:band}} (gray bars), one row per regime and one column per precision, matrices sorted by the byte ratio $q_{{\mathrm{{ref}}}}/q$. The top of each bar is the byte ratio, which the measured traffic matches outside the L2, and the bottom charges a whole transaction to every gather, so a marker below its bar, in black, loses to the rate of the kernel more than any count of the bytes allows. Each panel has its own speedup axis.}}
   \label{{fig:prediction}}
 \end{{figure*}}
 \end{{extended}}
@@ -1260,6 +1341,45 @@ def fp16_controls(controls_dir, device, characterization):
     return result
 
 
+def repeatability(campaign_csv, controls_dir):
+    """Run-to-run variation: the default build of the FP16 controls repeats the FP16 campaign, so the
+    same matrix, layout and threads per row timed twice. Returns the median and the 90th percentile of
+    |t_repeat / t_campaign - 1|, or None without the controls."""
+    repeat_csv = None if controls_dir is None else controls_dir / "bench_csr_width" / "csr_layouts_rcm.csv"
+    if repeat_csv is None or not repeat_csv.is_file():
+        return None
+    key = lambda row: (row["matrix"], row["prec"], row["column_mode"], row["column_bytes"], row["best_tpr"])
+    with open(repeat_csv) as repeat_file:
+        repeated = {key(row): float(row["t_ms"]) for row in csv.DictReader(repeat_file) if row["status"] == "ok"}
+    with open(campaign_csv) as campaign_file:
+        deviations = sorted(abs(float(row["t_ms"]) / repeated[key(row)] - 1.0)
+                            for row in csv.DictReader(campaign_file)
+                            if row["status"] == "ok" and key(row) in repeated)
+    if not deviations:
+        return None
+    return median(deviations), deviations[int(0.9 * len(deviations))]
+
+
+def load_controls(directory):
+    """Median K/K_ref and speedup of CSR-r16 and of its three bytes-per-load controls at FP16, from
+    experiments/slurm/r16_loads.sbatch, on the matrices every build measured. None when missing."""
+    if directory is None or not (directory / "bench_csr_width" / "csr_layouts_rcm.csv").is_file():
+        return None
+    import r16_loads
+    builds = {label: r16_loads.per_matrix(directory / name) for name, label in r16_loads.BUILDS
+              if (directory / name / "csr_layouts_rcm.csv").is_file()}
+    if len(builds) != len(r16_loads.BUILDS):
+        return None
+    common = [key for key in set.intersection(*(set(values) for values in builds.values())) if key[1] == "fp16"]
+    if not common:
+        return None
+    result = {label: {"rate": median([values[key]["rate"] for key in common]),
+                      "speedup": median([values[key]["speedup"] for key in common])}
+              for label, values in builds.items()}
+    result["matrices"] = len(common)
+    return result
+
+
 def second_device(campaign_dir, characterization, profile_dir=None, rate_list=None):
     """The same campaign on a second GPU. Returns its description and, per precision, the number of
     matrices with even rows outside its L2 on which CSR-r16 is exact, the geometric mean K/K_ref, and
@@ -1281,6 +1401,11 @@ def second_device(campaign_dir, characterization, profile_dir=None, rate_list=No
         ratios = [entry["speedup"] / entry["byte_ratio"] for entry in chosen]
         result[precision] = (len(chosen), geometric_mean(ratios),
                              sum(1 for ratio in ratios if abs(ratio - 1.0) <= PREDICTION_TOLERANCE))
+        packed = [record["layouts"]["lp"] for record in with_layout(of_precision(records, precision), "lp")
+                  if regime_of(record) == "domain"]
+        packed_ratios = [entry["speedup"] / entry["byte_ratio"] for entry in packed]
+        result.setdefault("lp", {})[precision] = (len(packed), geometric_mean(packed_ratios),
+                                                  sum(1 for ratio in packed_ratios if abs(ratio - 1.0) <= PREDICTION_TOLERANCE))
         group = [record for record in with_layout(of_precision(records, precision), "r16") if regime_of(record) == "domain"]
         result.setdefault("table", {})[precision] = (
             geometric_mean([record["q"] for record in group]), geometric_mean([record["layouts"]["r16"]["q"] for record in group]),
@@ -1289,7 +1414,7 @@ def second_device(campaign_dir, characterization, profile_dir=None, rate_list=No
         profiled = [entry for entry in rate_measurements(profile_dir, rate_list, csv_path)
                     if entry["group"] == "domain" and entry["precision"] == "fp16"]
         result["profile"] = {layout: {key: median([entry[key] for entry in profiled if entry["layout"] == layout])
-                                      for key in ("per_load", "occupancy_reference", "occupancy_layout",
+                                      for key in ("per_load", "loads", "occupancy_reference", "occupancy_layout",
                                                   "busy_reference", "busy_layout")}
                              for layout in ("r16", "lp")}
     return result
@@ -1353,7 +1478,7 @@ def cusparse_profile(study_dir, characterization):
             "fp16": (min(ratios["fp16"]), max(ratios["fp16"]))}
 
 
-def rate_tex(measurements, records, ordering, campaign, controls=None, second=None):
+def rate_tex(measurements, records, ordering, campaign, controls=None, second=None, loads=None, unordered=None):
     if not measurements:
         return ""
     device_cuda = shared.DEVICE.cuda if getattr(shared.DEVICE, 'cuda', None) else '12'
@@ -1386,16 +1511,16 @@ def rate_tex(measurements, records, ordering, campaign, controls=None, second=No
     if len(exceptions) == 1:
         matrix, precision, layout, value = exceptions[0]
         exception_text = (rf", except for {layout_name[layout]} on \texttt{{{shared.tex_escape(matrix)}}} at {precision.upper()}, "
-                          rf"which reads ${100.0 * abs(1.0 / value - 1.0):.0f}$ per cent {'more' if value < 1.0 else 'less'} than its count")
+                          rf"which reads ${100.0 * abs(1.0 / value - 1.0):.0f}$ percent {'more' if value < 1.0 else 'less'} than its count")
     elif exceptions:
         names = sorted({matrix for matrix, _, _, _ in exceptions})
         exception_text = (rf" on all but {len(exceptions)} of the {len(domain_pairs) // 2} profiled pairs, on "
                           + ", ".join(rf"\texttt{{{shared.tex_escape(name)}}}" for name in names)
-                          + rf", which depart by at most ${100.0 * max(abs(1.0 / value - 1.0) for _, _, _, value in exceptions):.0f}$ per cent")
+                          + rf", which depart by at most ${100.0 * max(abs(1.0 / value - 1.0) for _, _, _, value in exceptions):.0f}$ percent")
     else:
         exception_text = ""
     gather_counted = median([entry["counted_reference"] for entry in pick("gather", "lp")])
-    gather_text = (rf"the DRAM delivers a median ${100.0 * abs(1.0 - 1.0 / gather_counted):.0f}$ per cent "
+    gather_text = (rf"the DRAM delivers a median ${100.0 * abs(1.0 - 1.0 / gather_counted):.0f}$ percent "
                    + ("less than the count of CSR-i32, since the reordering lets the L2 keep part of $x$"
                       if gather_counted > 1.0 else "more than the count of CSR-i32, the cost of the gather"))
     exact_matrices = len({entry["matrix"] for entry in measurements if entry["layout"] == "r16"})
@@ -1420,10 +1545,10 @@ def rate_tex(measurements, records, ordering, campaign, controls=None, second=No
         flight_lines.append(rf"A100 {precision_label} & ${q_ref:.1f}$ & ${q_new:.1f}$ & ${k_ref:.0f}$ & ${k_new:.0f}$ \\")
         flight_rows[precision] = (q_ref, q_new, k_ref, k_new, byte_ratio, rate_ratio, speedup)
     f64, f16 = flight_rows["fp64"], flight_rows["fp16"]
-    flight_rows["fp64"] = (rf"At FP64 CSR-i32 moves ${f64[0]:.1f}$ bytes per nonzero and CSR-r16 ${f64[1]:.1f}$, both run at about the same rate, ${f64[2]:.0f}$ and ${f64[3]:.0f}$~GB/s, "
-                           rf"and the speedup of ${f64[6]:.2f}$ is close to the byte ratio of ${f64[4]:.2f}$.")
-    flight_rows["fp16"] = (rf"at FP16, with ${f16[0]:.1f}$ and ${f16[1]:.1f}$ bytes per nonzero, CSR-r16 runs at ${f16[3]:.0f}$~GB/s against ${f16[2]:.0f}$, "
-                           rf"$K/K_{{\mathrm{{ref}}}} = {f16[5]:.2f}$, and the speedup is ${f16[6]:.2f}$ against a byte ratio of ${f16[4]:.2f}$")
+    flight_rows["fp64"] = (rf"At FP64 CSR-i32 moves ${f64[0]:.1f}$ bytes per nonzero and CSR-r16 ${f64[1]:.1f}$." "\n" rf"Both run at about the same rate, ${f64[2]:.0f}$ and ${f64[3]:.0f}$~GB/s, "
+                           rf"so the speedup of ${f64[6]:.2f}$ is close to the byte ratio of ${f64[4]:.2f}$.")
+    flight_rows["fp16"] = (rf"In geometric mean over these matrices of the campaign, CSR-i32 and CSR-r16 move ${f16[0]:.1f}$ and ${f16[1]:.1f}$ bytes per nonzero at FP16, and CSR-r16 runs at ${f16[3]:.0f}$~GB/s against ${f16[2]:.0f}$, "
+                           rf"so $K/K_{{\mathrm{{ref}}}} = {f16[5]:.2f}$ and the speedup is ${f16[6]:.2f}$ against a byte ratio of ${f16[4]:.2f}$")
     if second:
         flight_lines.append(r"\midrule")
         for precision, precision_label, _ in PRECISIONS:
@@ -1442,9 +1567,9 @@ def rate_tex(measurements, records, ordering, campaign, controls=None, second=No
                  "with the logarithm of the working set, so the loss does not shrink as the matrix grows")
     if controls:
         controls_text = (
-            r"\begin{brief}" "\n"
-            rf"Repeating the FP16 measurements on all {controls['matrices']} matrices with the products accumulated in FP16 rather than FP32 gives $K/K_{{\mathrm{{ref}}}} = {controls['fp16acc']:.2f}$ against ${controls['default']:.2f}$, so the loss does not lie in the precision of the accumulation." "\n"
-            r"\end{brief}" "\n"
+            r"\begin{extended}" "\n"
+            rf"Accumulating in FP16 instead of FP32 on all {controls['matrices']} matrices gives $K/K_{{\mathrm{{ref}}}} = {controls['fp16acc']:.2f}$ against ${controls['default']:.2f}$, so the loss does not come from the precision of the accumulation." "\n"
+            r"\end{extended}" "\n"
             r"\begin{extended}" "\n"
             "Three further measurements show that the loss does not depend on the precision of the accumulation, on the unrolling of the loop or on the size of the matrix." "\n"
             rf"The FP16 measurements were repeated on all {controls['matrices']} matrices with three builds of the kernels, and the default one gives $K/K_{{\mathrm{{ref}}}} = {controls['default']:.2f}$ for CSR-r16 on the {controls['even']} balanced matrices outside the L2, as in the campaign." "\n"
@@ -1456,23 +1581,55 @@ def rate_tex(measurements, records, ordering, campaign, controls=None, second=No
         controls_text = ""
     if second:
         a100_bandwidth = shared.DEVICE.theoretical_bw_gbs
+        a100_even = len([record for record in with_layout(of_precision(records, "fp64"), "r16") if regime_of(record) == "domain"])
         controls_text += (
-            rf"The same campaign on a {second['name']} ({second['arch']}, ${second['bandwidth']:.0f}$~GB/s, {second['l2']:.0f}~MiB L2), "
-            rf"whose L2 is smaller than every working set, shows the same pattern." "\n"
-            rf"On the {second['fp64'][0]} balanced matrices on which CSR-r16 is exact, its $K/K_{{\mathrm{{ref}}}}$ is ${second['fp64'][1]:.2f}$, ${second['fp32'][1]:.2f}$ and ${second['fp16'][1]:.2f}$ at FP64, FP32 and FP16, "
-            rf"and the byte ratio predicts the speedup within ${100.0 * PREDICTION_TOLERANCE:.0f}$ per cent on {second['fp64'][2]}, {second['fp32'][2]} and {second['fp16'][2]} of them." "\n"
-            rf"Its counters show the same trend for CSR-r16 at FP16, with ${second['profile']['r16']['per_load']:.2f}$ of the bytes per load of CSR-i32 at the same occupancy and a DRAM busy share that falls from ${second['profile']['r16']['busy_reference']:.0f}$ to ${second['profile']['r16']['busy_layout']:.0f}$ per cent, "
-            rf"while CSR-lp, with ${second['profile']['lp']['per_load']:.2f}$ of the bytes per load, keeps it at ${second['profile']['lp']['busy_layout']:.0f}$ per cent, so on this device the bytes per load do not set the loss alone." "\n")
+            rf"The same campaign on a {second['name']} ({second['arch']}, ${second['bandwidth']:.0f}$~GB/s, {second['l2']:.0f}~MiB L2) "
+            rf"shows the same pattern, and there every working set exceeds the L2." "\n"
+            rf"On the {second['fp64'][0]} balanced matrices on which CSR-r16 is exact, the {a100_even} of the A100 and {second['fp64'][0] - a100_even} that fit in the L2 of the A100, its $K/K_{{\mathrm{{ref}}}}$ is ${second['fp64'][1]:.2f}$, ${second['fp32'][1]:.2f}$ and ${second['fp16'][1]:.2f}$ at FP64, FP32 and FP16, "
+            rf"and the byte ratio predicts the speedup within ${100.0 * PREDICTION_TOLERANCE:.0f}$ percent on {second['fp64'][2]}, {second['fp32'][2]} and {second['fp16'][2]} of them." "\n"
+            r"\begin{extended}" "\n"
+            + (rf"CSR-lp, on its {second['lp']['fp64'][0]} balanced matrices, has a $K/K_{{\mathrm{{ref}}}}$ of ${second['lp']['fp64'][1]:.2f}$, ${second['lp']['fp32'][1]:.2f}$ and ${second['lp']['fp16'][1]:.2f}$, "
+               rf"and the byte ratio predicts its speedup within ${100.0 * PREDICTION_TOLERANCE:.0f}$ percent on {second['lp']['fp64'][2]}, {second['lp']['fp32'][2]} and {second['lp']['fp16'][2]} of them." "\n"
+               if "lp" in second else "") +
+            rf"For CSR-r16 at FP16 its counters show the same trend, ${second['profile']['r16']['per_load']:.2f}$ of the bytes per load of CSR-i32 and a DRAM busy share that falls from ${second['profile']['r16']['busy_reference']:.0f}$ to ${second['profile']['r16']['busy_layout']:.0f}$ percent." "\n"
+            rf"CSR-lp issues ${second['profile']['lp']['loads']:.2f}$ times the load instructions of CSR-i32, since each lane also loads the base, width and word offset of its row and the first two words of its run, so each load carries fewer bytes than the byte ratio alone implies." "\n"
+            rf"CSR-lp, however, keeps the DRAM busy ${second['profile']['lp']['busy_layout']:.0f}$ percent of the time with only ${second['profile']['lp']['per_load']:.2f}$ of the bytes per load, so on this device the bytes per load do not explain the loss alone." "\n"
+            r"\end{extended}" "\n")
+    loads_text = ""
+    if loads and loads.get("a100"):
+        first, other = loads["a100"], loads.get("second")
+        on_other = lambda label: (rf" and ${other[label]['rate']:.2f}$ on the Quadro" if other else "")
+        loads_text = (
+            rf"Three control builds of CSR-r16 change only how its offsets are loaded, and each is timed beside CSR-i32 on the {first['matrices']} balanced matrices outside the L2." "\n"
+            rf"With 32-bit offsets, the bytes per load of CSR-i32, the median $K/K_{{\mathrm{{ref}}}}$ at FP16 is ${first['wide']['rate']:.2f}$ on the A100{on_other('wide')}, so the loss comes from loading the narrow index and not from the added operation." "\n"
+            rf"Laying the same 16-bit offsets out lane by lane, as CSR-lp does, raises it with the same bytes from ${first['r16']['rate']:.2f}$ to ${first['lane']['rate']:.2f}$ on the A100"
+            + (rf" and from ${other['r16']['rate']:.2f}$ to ${other['lane']['rate']:.2f}$ on the Quadro." if other else ".") + "\n"
+            rf"On the A100 the median speedup then grows from ${first['r16']['speedup']:.2f}\times$ to ${first['lane']['speedup']:.2f}\times$." "\n"
+            rf"Loading two of these offsets with one 32-bit load gives ${first['pair']['rate']:.2f}$ on the A100{on_other('pair')}, so the bytes per load alone do not set the loss." "\n")
+    unordered_text = ""
+    if unordered:
+        ordered_reads = {precision: median([1.0 / entry["counted_reference"] for entry in pick("gather", "r16", precision) + pick("gather", "lp", precision)])
+                         for precision in ("fp64", "fp16")}
+        excess = sorted({round(100.0 * (unordered[precision] - ordered_reads[precision])) for precision in ("fp64", "fp16")})
+        unordered_text = (rf"Without RCM they read ${unordered['fp64']:.2f}$ and ${unordered['fp16']:.2f}$ of $Q$ at FP64 and FP16, an excess of {' to '.join(str(value) for value in excess)} percent, "
+                          rf"and the real traffic ratio still matches the byte ratio within ${100.0 * unordered['gap']:.1f}$ percent.")
+    names = lambda group: ", ".join(rf"\texttt{{{name.replace('_', chr(92) + '_')}}}" for name in sorted({entry["matrix"] for entry in measurements if entry["group"] == group}, key=str.lower))
+    short_rows = max(record["row_length"] for record in of_precision(records, "fp64") if record["matrix"] in {entry["matrix"] for entry in pick("gather", "lp")})
+    profiled_text = (rf"\extonly{{The balanced matrices are {names('domain')}, those with short rows, at most ${short_rows:.0f}$ nonzeros per row on average, are {names('gather')}, "
+                     rf"the unbalanced ones are {names('uneven')}, and those in the L2 are {names('cache')}.}}")
     return rf"""
-\subsection{{Characterization of the rate ratio}}
+\subsection{{Characterization of the efficiency factor}}
 \label{{sec:results-rate}}
 \label{{sec:results-limits}}
 
-The causes of the second factor of Eq.~\eqref{{eq:identity}} are read from the hardware counters that Nsight Compute collects for each kernel.
-CSR-i32, CSR-r16 and CSR-lp are profiled on {len({entry['matrix'] for entry in measurements})} of the matrices, chosen in four groups so that each group departs from the first in one respect only.
-The {matrices('domain')} matrices of the first group are balanced with a working set above the L2, the longest row at most {IMBALANCE_LIMIT:g} times the mean, {matrices('gather')} have short rows and an $x$ larger than the L2, {matrices('uneven')} are less balanced than that limit, and {matrices('cache')} fit in the L2.
-Each configuration is profiled once, {ordering_text} and at the $T$ that is fastest for CSR-i32, without flushing the caches between the replays of the profiler, so that a matrix in the L2 is measured warm as in the campaign.
+The hardware counters that Nsight Compute collects for each kernel show what sets the efficiency factor.
+CSR-i32, CSR-r16 and CSR-lp are profiled on {len({entry['matrix'] for entry in measurements})} matrices in four groups, and each group differs from the first in one respect only.
+The first group holds {matrices('domain')} balanced matrices.
+The others hold {matrices('gather')} matrices with short rows and an $x$ larger than the L2, {matrices('uneven')} unbalanced matrices and {matrices('cache')} matrices that fit in the L2.
+Each configuration is profiled once, {ordering_text} and at the $T$ that is fastest for CSR-i32.
+The caches are not flushed between the replays of the profiler, so a matrix in the L2 is measured warm, as in the campaign.
 {exact_text}.
+{profiled_text}
 
 \begin{{extended}}
 The profiler is the Nsight Compute of CUDA {device_cuda}, run with the options \texttt{{--target-processes all}}, \texttt{{--kernel-name-base demangled}} and \texttt{{--cache-control none}}, the metrics of Table~\ref{{tab:ncu-metrics}} and a filter on the names of the three kernels, in its default kernel replay and with the clocks locked to their base, its default.
@@ -1501,45 +1658,57 @@ metric & quantity & factor \\
 \end{{tabular}}
 \end{{table*}}
 \end{{extended}}
-Since $K$ is $Q$ over the time and the DRAM delivers its own bytes in the same time, $K/K_{{\mathrm{{ref}}}}$ is the ratio of the busy shares of the DRAM of the two kernels, corrected by how far each count departs from the real traffic.
-Three factors move it away from one, the working set against the L2, the longest row against the mean, and the bytes a load carries relative to CSR-i32, approximated by $q/q_{{\mathrm{{ref}}}}$, which it equals for CSR-r16 since both issue three loads per nonzero.
-These quantities tell where $K/K_{{\mathrm{{ref}}}}$ departs from one and in which direction, but not its value on a single matrix, which also depends on the decoding of CSR-lp and on how close the matrix lies to the limit of a regime.
-\briefonly{{Fig.~\ref{{fig:limits}} gives the effect of the cache on $K/K_{{\mathrm{{ref}}}}$ over the campaign and the counters behind the other two factors on the profiled matrices.}}
+Since $K$ is $Q$ over the time, $K/K_{{\mathrm{{ref}}}}$ is the ratio of the shares of time the DRAM is busy for the two kernels, up to how far each count departs from the real traffic.
+Three factors move it away from one.
+They are the working set against the L2, the longest row against the mean, and the bytes each load carries relative to CSR-i32.
+The last is close to $q/q_{{\mathrm{{ref}}}}$ for CSR-r16, which issues the same three loads per nonzero as CSR-i32.
+They tell where $K/K_{{\mathrm{{ref}}}}$ departs from one but not its value on a single matrix, which also depends on the decoding of CSR-lp and on how close the matrix lies to the edge of a regime.
+\briefonly{{Fig.~\ref{{fig:limits}} shows the effect of the cache over the campaign and the counters behind the other two factors.}}
 \extonly{{Fig.~\ref{{fig:limits}} gives each factor in one column, with the measured $K/K_{{\mathrm{{ref}}}}$ against its indicator in the top row and the hardware counter that shows the mechanism on the profiled matrices in the bottom row, and Table~\ref{{tab:results-rate}} gives the counters per group.}}
 
 {campaign['figure']}
-\paragraph*{{A. Cache}}
-Outside the L2 the ratio of the bytes the DRAM delivers to CSR-i32 and to a compressed layout (\texttt{{dram\_\_bytes\_read}}) differs from $q_{{\mathrm{{ref}}}}/q$ by a median of ${100.0 * real_gap:.1f}$ per cent, so the byte ratio is the ratio of the real traffic, while in the L2 the DRAM delivers as little as ${100.0 / cache_counted:.0f}$ per cent of the bytes $Q$ and the time no longer follows the bytes\extonly{{ (Fig.~\ref{{fig:limits}}A, bottom)}}.
+\subsubsection{{Cache}}
+Outside the L2 the DRAM traffic of CSR-i32 over that of a compressed layout (\texttt{{dram\_\_bytes\_read}}) matches $q_{{\mathrm{{ref}}}}/q$ within a median ${100.0 * real_gap:.1f}$ percent, so the byte ratio is the ratio of the real traffic.
+In the L2 the DRAM delivers as little as ${100.0 / cache_counted:.0f}$ percent of $Q$, and the time no longer follows the bytes\extonly{{ (Fig.~\ref{{fig:limits}}A, bottom)}}.
+On the {matrices('gather')} matrices with short rows and an $x$ larger than the L2 the DRAM delivers ${median([1.0 / entry['counted_layout'] for entry in pick('gather', 'lp') + pick('gather', 'r16')]):.2f}$ of $Q$, less than $Q$ by the writes of $y$ that the read counter does not see, so even there $x$ is read about once and $K/K_{{\mathrm{{ref}}}}$ stays at ${ratio('gather', 'lp', 'fp64'):.2f}$.
+{unordered_text}
 \begin{{brief}}
 {campaign['cache_brief']}
 \end{{brief}}
 \begin{{extended}}
-The counter sees only reads, so on the matrices with short rows the DRAM delivers less than $Q$ by the writes of $y$, while $K/K_{{\mathrm{{ref}}}}$ stays at ${ratio('gather', 'lp', 'fp64'):.2f}$.
 {campaign['cache']}
 \end{{extended}}
 
-\paragraph*{{B. Balance of the rows}}
+\subsubsection{{Balance of the rows}}
 \begin{{brief}}
-The active cycles of the multiprocessors (\texttt{{sm\_\_cycles\_active}}) stay even up to the limit of {IMBALANCE_LIMIT:g} on the longest row, and past it the busiest multiprocessor runs up to ${max(entry['spread'] for entry in pick('uneven', 'lp')):.1f}$ times the mean while the DRAM is busy for only ${middle('uneven', 'lp', 'busy_reference', 'fp64'):.0f}$ per cent of the time, so the chain of the longest rows sets the time and $K/K_{{\mathrm{{ref}}}}$ falls as low as ${campaign['lowest_uneven']}$ (Fig.~\ref{{fig:limits}}B).
+Up to the limit of {IMBALANCE_LIMIT:g} on the longest row, all multiprocessors stay active for about the same time (\texttt{{sm\_\_cycles\_active}}).
+Past it, the busiest one runs up to ${max(entry['spread'] for entry in pick('uneven', 'lp')):.1f}$ times the mean while the DRAM is busy only ${middle('uneven', 'lp', 'busy_reference', 'fp64'):.0f}$ percent of the time.
+The longest rows then set the time, and the decoding of CSR-lp lengthens them.
+$K/K_{{\mathrm{{ref}}}}$ falls as low as ${campaign['lowest_uneven']}$, where CSR-lp runs at ${campaign['lowest_speedup']}\times$ the speed of CSR-i32 (Fig.~\ref{{fig:limits}}B).
 \end{{brief}}
 \begin{{extended}}
-The active cycles of the multiprocessors (\texttt{{sm\_\_cycles\_active}}) stay even up to the limit of {IMBALANCE_LIMIT:g} on the longest row, and past it the busiest multiprocessor runs up to ${max(entry['spread'] for entry in pick('uneven', 'lp')):.1f}$ times the mean while the DRAM is busy for only ${middle('uneven', 'lp', 'busy_reference', 'fp64'):.0f}$ per cent of the time (Fig.~\ref{{fig:limits}}B, bottom).
+The active cycles of the multiprocessors (\texttt{{sm\_\_cycles\_active}}) stay even up to the limit of {IMBALANCE_LIMIT:g} on the longest row, and past it the busiest multiprocessor runs up to ${max(entry['spread'] for entry in pick('uneven', 'lp')):.1f}$ times the mean while the DRAM is busy for only ${middle('uneven', 'lp', 'busy_reference', 'fp64'):.0f}$ percent of the time (Fig.~\ref{{fig:limits}}B, bottom).
 The time is then the chain of steps of the longest rows, which compression does not shorten.
 {campaign['balance']}
 The loss is larger for CSR-lp, ${ratio('uneven', 'lp', 'fp16'):.2f}$ against ${ratio('uneven', 'r16', 'fp16'):.2f}$ for CSR-r16 at FP16 on the profiled matrices, consistent with the cost of its decoding, which on that chain is no longer hidden behind the memory accesses.
 \end{{extended}}
 
-\paragraph*{{C. Bytes in flight}}
-Since the byte ratio is the ratio of the real traffic outside the L2, on balanced matrices the gap between the speedup and the byte ratio is a gap in rate.
-Table~\ref{{tab:rate-bytes}} gives the bytes per nonzero and the rate of CSR-i32 and CSR-r16 on these matrices.
-{flight_rows['fp64']}
-As the values narrow, CSR-i32 itself moves fewer bytes per nonzero, and the two bytes that CSR-r16 removes from each of them cost a larger share of its rate, so that {flight_rows['fp16']}.
-The counters show why on the profiled matrices.
-CSR-r16 adds one integer addition per nonzero to CSR-i32, keeps its occupancy, ${middle('domain', 'r16', 'occupancy_layout', 'fp16'):.0f}$ against ${middle('domain', 'r16', 'occupancy_reference', 'fp16'):.0f}$ per cent at FP16 (\texttt{{sm\_\_warps\_active}}), and issues the same three loads per nonzero, but each load carries fewer DRAM bytes, ${middle('domain', 'r16', 'per_load', 'fp64'):.2f}$ of those of CSR-i32 at FP64 and ${middle('domain', 'r16', 'per_load', 'fp16'):.2f}$ at FP16 (\texttt{{dram\_\_bytes\_read}} over \texttt{{smsp\_\_inst\_executed\_op\_global\_ld}}).
-It executes ${middle('domain', 'r16', 'instructions', 'fp64'):.2f}$ and ${middle('domain', 'r16', 'instructions', 'fp16'):.2f}$ times the instructions of CSR-i32 at FP64 and FP16 (\texttt{{smsp\_\_inst\_executed}}), so its added work does not grow as the values narrow.
-By Little's law~\cite{{little1961}} the memory stays busy only while enough bytes are in flight to cover its latency, so at the same occupancy loads with fewer bytes each leave the DRAM idle for part of it, and its busy share (\texttt{{dram\_\_throughput}}) stays at ${middle('domain', 'r16', 'busy_layout', 'fp64'):.0f}$ per cent at FP64 but falls from ${middle('domain', 'r16', 'busy_reference', 'fp16'):.0f}$ to ${middle('domain', 'r16', 'busy_layout', 'fp16'):.0f}$ per cent at FP16 (Fig.~\ref{{fig:limits}}C).
-{controls_text}CSR-r16 keeps the loads of CSR-i32 by design, to isolate the effect of the bytes, so this loss measures how many bytes each load of a compressed format must carry back, with wider loads or more nonzeros per thread, to turn the whole byte ratio into time.
+\subsubsection{{Bytes in flight}}
+Outside the L2 the byte ratio matches the real traffic, so on balanced matrices any gap between the speedup and the byte ratio comes from the rate.
+\extonly{{Table~\ref{{tab:rate-bytes}} gives the bytes per nonzero and the rate of CSR-i32 and CSR-r16 on these matrices.}}
+\extonly{{{flight_rows['fp64']}}}
+As the values narrow, the bytes that CSR-r16 removes weigh more on each nonzero, and its rate falls.
+{flight_rows['fp16']}.
+The counters of the profiled matrices narrow down the cause.
+CSR-r16 adds one integer addition per nonzero and keeps the occupancy of CSR-i32, ${middle('domain', 'r16', 'occupancy_layout', 'fp16'):.0f}$ against ${middle('domain', 'r16', 'occupancy_reference', 'fp16'):.0f}$ percent at FP16 (\texttt{{sm\_\_warps\_active}}).
+It issues the same three loads per nonzero, but each carries fewer DRAM bytes, ${middle('domain', 'r16', 'per_load', 'fp64'):.2f}$ of those of CSR-i32 at FP64 and ${middle('domain', 'r16', 'per_load', 'fp16'):.2f}$ at FP16 (\texttt{{dram\_\_bytes\_read}} over \texttt{{smsp\_\_inst\_executed\_op\_global\_ld}}).
+It executes ${middle('domain', 'r16', 'instructions', 'fp64'):.2f}$ and ${middle('domain', 'r16', 'instructions', 'fp16'):.2f}$ times the instructions of CSR-i32 at FP64 and FP16 (\texttt{{smsp\_\_inst\_executed}}), so its extra work does not grow as the values narrow.
+The share of time the DRAM is busy (\texttt{{dram\_\_throughput}}) stays at ${middle('domain', 'r16', 'busy_layout', 'fp64'):.0f}$ percent at FP64 but falls from ${middle('domain', 'r16', 'busy_reference', 'fp16'):.0f}$ to ${middle('domain', 'r16', 'busy_layout', 'fp16'):.0f}$ percent at FP16 (Fig.~\ref{{fig:limits}}C).
+By Little's law~\cite{{little1961}} the memory stays busy only while enough bytes are in flight to cover its latency, and loads that carry fewer bytes at the same occupancy are consistent with this drop.
+{loads_text}
+{controls_text}
 
+\begin{{extended}}
 \begin{{table}}[t]
 \centering
 \caption{{Bytes per nonzero $q$ and rate $K$ of CSR-i32 and CSR-r16 on balanced matrices outside the L2, geometric means over the {flight_counts} matrices on which CSR-r16 is exact at FP64, FP32 and FP16 on the A100, whose ratios are those of Table~\ref{{tab:results-gain}}, and over {second['fp64'][0] if second else 0} on the Quadro.}}
@@ -1556,6 +1725,7 @@ By Little's law~\cite{{little1961}} the memory stays busy only while enough byte
 \bottomrule
 \end{{tabular}}
 \end{{table}}
+\end{{extended}}
 {campaign['flight']}
 
 \begin{{extended}}
@@ -1685,7 +1855,7 @@ def implementation_tex(layout_gain, bound_gain):
 
 The efficiency of a layout is a property of its implementation as much as of its encoding.
 CSR-lp first stored the packed differences one entry at a time, so each lane rebuilt a 64-bit window from two global loads per nonzero, four in total with the value and the element of $x$.
-Storing the same bits one lane at a time lets a lane keep the window in a register and load a new word only after consuming 32 bits, with the packed size within ${100.0 * size_change:.1f}$ per cent of the original.
+Storing the same bits one lane at a time lets a lane keep the window in a register and load a new word only after consuming 32 bits, with the packed size within ${100.0 * size_change:.1f}$ percent of the original.
 That change alone makes CSR-lp faster by a median ${medians['fp64']:.2f}\times$ at FP64, ${medians['fp32']:.2f}\times$ at FP32 and ${medians['fp16']:.2f}\times$ at FP16, more than CSR-r16 gains over CSR-i32 at FP64.
 {bound_text}Neither change alters the bytes $Q$ or the results, which stay bit-identical to CSR-i32, and every measurement of the preceding subsections includes both.
 \end{{extended}}
@@ -1697,7 +1867,7 @@ def intro_tex():
 \section{Results}
 \label{sec:results}
 
-This section reports how much each layout gains over CSR-i32\briefonly{ and}\extonly{,} what the rate ratio of Eq.~\eqref{eq:identity} consists of\extonly{, and what the implementation of a layout costs}.
+This section first reports how much each layout gains over CSR-i32, then what sets the efficiency factor of Eq.~\eqref{eq:identity}\extonly{, and finally what the implementation of a layout costs}.
 """
 
 
@@ -1717,6 +1887,10 @@ def main():
     parser.add_argument("--characterization", type=Path, default=None)
     parser.add_argument("--rate-study", type=Path, default=ROOT / "data" / "results" / "a100" / "k_study_rcm",
                         help="Nsight Compute exports of experiments/slurm/k_study.sbatch")
+    parser.add_argument("--original-rate-study", type=Path, default=ROOT / "data" / "results" / "a100" / "k_study_original",
+                        help="the same Nsight Compute exports in the original ordering, for the excess of the gather")
+    parser.add_argument("--original-rate-csv", type=Path, default=ROOT / "data" / "results" / "a100" / "csr_layouts.csv",
+                        help="campaign in the original ordering of the build profiled by --original-rate-study")
     parser.add_argument("--rate-list", type=Path, default=ROOT / "experiments" / "lists" / "k_study.txt")
     parser.add_argument("--rate-ordering", choices=("rcm", "original"), default="rcm",
                         help="ordering of the profiled runs: rcm for k_study_rcm, original for the earlier k_study")
@@ -1727,6 +1901,10 @@ def main():
                         help="a later run of CSR-i32 and cuSPARSE with an FP32 compute type at FP16 "
                              "(experiments of the cuSPARSE fix), whose FP16 rows complete the campaign")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "output")
+    parser.add_argument("--r16-loads", type=Path, default=ROOT / "data" / "results" / "a100" / "r16_loads",
+                        help="the bytes-per-load controls of CSR-r16, experiments/slurm/r16_loads.sbatch")
+    parser.add_argument("--second-r16-loads", type=Path, default=ROOT / "data" / "results" / "quadro" / "r16_loads",
+                        help="the same controls on the second GPU")
     parser.add_argument("--fp16-controls", type=Path, default=ROOT / "data" / "results" / "a100" / "fp16_controls",
                         help="FP16 campaign repeated with the default, FP16-accumulate and unroll-16 builds")
     parser.add_argument("--cusparse-profile", type=Path, default=ROOT / "data" / "results" / "a100" / "cusparse_study",
@@ -1779,18 +1957,40 @@ def main():
                                       args.rate_csv or (args.csv if args.rate_ordering == "rcm"
                                                         else args.csv.with_name("csr_layouts.csv")))
                     if args.rate_study.is_dir() else [])
+    unordered = None
+    if args.original_rate_study and args.original_rate_study.is_dir():
+        original_profile = [entry for entry in rate_measurements(args.original_rate_study, args.rate_list, args.original_rate_csv)
+                            if entry["group"] == "gather"]
+        if original_profile:
+            unordered = {precision: median([1.0 / entry["counted_reference"] for entry in original_profile if entry["precision"] == precision])
+                         for precision in ("fp64", "fp16")}
+            unordered["gap"] = median([abs(entry["counted_layout"] / entry["counted_reference"] - 1.0) for entry in original_profile])
+    own_records = summarize(own_table, device, characterization)
+    own_valid, ref_valid = validity(own_records), validity(records)
+    own_check = (sum(ref_valid[("domain", layout, "fp16")][2] for layout in ("lp", "r16")),
+                 sum(own_valid[("domain", layout, "fp16")][2] for layout in ("lp", "r16")),
+                 sum(ref_valid[("domain", layout, "fp16")][0] for layout in ("lp", "r16")))
     campaign, limits_rest = limits_tex(records, figures_dir, measurements)
+    regime_mean = lambda source, precision, key: geometric_mean([record["layouts"]["lp"][key] if key != "rate_ratio"
+                                                                 else record["layouts"]["lp"]["speedup"] / record["layouts"]["lp"]["byte_ratio"]
+                                                                 for record in with_layout(of_precision(source, precision), "lp")
+                                                                 if regime_of(record) == "domain"])
+    own_lp = {name: {precision: {key: regime_mean(source, precision, key) for key in ("byte_ratio", "rate_ratio", "speedup")}
+                     for precision, _, _ in PRECISIONS}
+              for name, source in (("own", own_records), ("reference", records))}
     controls = fp16_controls(args.fp16_controls, device, characterization)
     vendor_profile = cusparse_profile(args.cusparse_profile, characterization)
     second = second_device(args.second_device, characterization, args.second_profile, args.rate_list)
     (sections_dir / "results.tex").write_text(
         intro_tex()
         + setup_tex(device, records, identical, cusparse_deviation, (args.reps, args.warmup, args.min_sample_ms),
-                    len(admissible_original(original_csv)), cost, own_gain, separate_fp16)
+                    len(admissible_original(original_csv)), cost, own_gain, separate_fp16,
+                    repeatability(args.csv, args.fp16_controls), own_check, own_lp)
         + "\n\\begin{comment}\n" + admissibility_tex(records, characterization) + "\\end{comment}\n"
         + gain_tex(records, vendor_profile)
-        + performance_tex(table, device)
-        + rate_tex(measurements, records, args.rate_ordering, campaign, controls, second)
+        + performance_tex(table, device, records)
+        + rate_tex(measurements, records, args.rate_ordering, campaign, controls, second,
+                   {"a100": load_controls(args.r16_loads), "second": load_controls(args.second_r16_loads)}, unordered)
         + limits_rest
         + "\n\\begin{comment}\n" + bound_tex(records) + "\\end{comment}\n"
         + implementation_tex(lane_packed_gain(element_major_csv, unbounded or own_table),

@@ -12,4 +12,6 @@ python3 analysis/make_results.py \
   --unbounded-csv "${A}/unbounded/csr_layouts_rcm.csv" --rate-study "${A}/k_study_rcm" --rate-ordering rcm \
   --cusparse-csv "${A}/cusparse_rcm/cusparse_rcm.csv" --fp16-controls "${A}/fp16_controls" \
   --cusparse-profile "${A}/cusparse_study" --second-device "${Q}" --second-profile "${Q}/k_study" \
+  --r16-loads "${A}/r16_loads" --second-r16-loads "${Q}/r16_loads" \
+  --original-rate-study "${A}/k_study_original" --original-rate-csv "${A}/csr_layouts.csv" \
   --output-dir "${OUT}"

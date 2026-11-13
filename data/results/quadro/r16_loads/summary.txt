@@ -1,0 +1,62 @@
+fp64, 26 matrices, geometric means
+  r16   q_ref/q 1.155  K/K_ref 0.990  speedup 1.143  K/K_ref over r16 1.000  largest |dy| 0.0e+00
+  lane  q_ref/q 1.155  K/K_ref 0.968  speedup 1.118  K/K_ref over r16 1.000  largest |dy| 0.0e+00
+  pair  q_ref/q 1.155  K/K_ref 0.957  speedup 1.105  K/K_ref over r16 1.002  largest |dy| 0.0e+00
+  wide  q_ref/q 0.982  K/K_ref 0.998  speedup 0.981  K/K_ref over r16 1.006  largest |dy| 0.0e+00
+    BenElechi1           r16 0.999 lane 0.996 pair 0.996 wide 0.998
+    Bump_2911            r16 0.990 lane 0.953 pair 0.989 wide 0.998
+    CurlCurl_1           r16 0.984 lane 1.045 pair 1.071 wide 0.996
+    F1                   r16 0.994 lane 0.995 pair 0.995 wide 0.999
+    G3_circuit           r16 0.967 lane 0.965 pair 1.029 wide 0.997
+    Geo_1438             r16 0.991 lane 0.953 pair 0.992 wide 0.999
+    ML_Geer              r16 0.993 lane 0.998 pair 0.995 wide 0.997
+    RM07R                r16 0.988 lane 0.982 pair 0.988 wide 0.994
+    Si87H76              r16 0.996 lane 1.000 pair 0.982 wide 0.997
+    TSOPF_RS_b2383       r16 0.995 lane 0.553 pair 0.288 wide 1.000
+    af_0_k101            r16 0.994 lane 0.995 pair 0.995 wide 1.001
+    af_shell10           r16 0.982 lane 0.998 pair 0.996 wide 1.000
+    atmosmodl            r16 0.996 lane 0.994 pair 1.040 wide 0.985
+    cant                 r16 0.991 lane 0.994 pair 0.998 wide 1.005
+    delaunay_n23         r16 0.980 lane 0.980 pair 0.991 wide 1.004
+    dielFilterV2real     r16 0.994 lane 0.997 pair 0.998 wide 0.996
+    dielFilterV3real     r16 0.990 lane 0.991 pair 0.991 wide 0.996
+    europe_osm           r16 1.005 lane 1.007 pair 1.007 wide 1.006
+    gsm_106857           r16 0.991 lane 0.994 pair 0.996 wide 0.997
+    offshore             r16 0.987 lane 0.970 pair 0.992 wide 1.001
+    parabolic_fem        r16 0.976 lane 0.999 pair 1.048 wide 0.997
+    pwtk                 r16 1.000 lane 0.996 pair 0.996 wide 0.998
+    shipsec5             r16 0.997 lane 0.994 pair 0.995 wide 0.996
+    shipsec8             r16 0.998 lane 0.992 pair 0.998 wide 0.996
+    ss                   r16 0.994 lane 0.994 pair 0.991 wide 0.997
+    tmt_unsym            r16 0.970 lane 0.968 pair 1.034 wide 1.012
+fp16, 26 matrices, geometric means
+  r16   q_ref/q 1.377  K/K_ref 0.932  speedup 1.283  K/K_ref over r16 1.000  largest |dy| 0.0e+00
+  lane  q_ref/q 1.377  K/K_ref 0.919  speedup 1.265  K/K_ref over r16 1.045  largest |dy| 0.0e+00
+  pair  q_ref/q 1.377  K/K_ref 0.908  speedup 1.250  K/K_ref over r16 1.038  largest |dy| 0.0e+00
+  wide  q_ref/q 0.964  K/K_ref 1.017  speedup 0.980  K/K_ref over r16 1.086  largest |dy| 0.0e+00
+    BenElechi1           r16 0.947 lane 0.944 pair 0.976 wide 0.996
+    Bump_2911            r16 0.903 lane 0.974 pair 0.988 wide 0.971
+    CurlCurl_1           r16 1.020 lane 1.049 pair 1.059 wide 1.021
+    F1                   r16 0.895 lane 0.957 pair 0.932 wide 1.000
+    G3_circuit           r16 1.014 lane 0.981 pair 0.967 wide 1.053
+    Geo_1438             r16 0.910 lane 0.970 pair 0.991 wide 0.964
+    ML_Geer              r16 0.938 lane 0.967 pair 0.955 wide 0.980
+    RM07R                r16 0.924 lane 0.943 pair 0.915 wide 1.004
+    Si87H76              r16 0.824 lane 0.855 pair 0.827 wide 1.009
+    TSOPF_RS_b2383       r16 0.764 lane 0.221 pair 0.139 wide 1.002
+    af_0_k101            r16 0.901 lane 0.984 pair 0.986 wide 1.002
+    af_shell10           r16 0.911 lane 0.988 pair 0.987 wide 1.001
+    atmosmodl            r16 1.056 lane 1.113 pair 1.095 wide 1.072
+    cant                 r16 0.883 lane 0.932 pair 0.948 wide 0.996
+    delaunay_n23         r16 1.087 lane 1.054 pair 1.053 wide 1.060
+    dielFilterV2real     r16 0.918 lane 0.948 pair 0.964 wide 1.000
+    dielFilterV3real     r16 0.922 lane 0.977 pair 0.946 wide 1.001
+    europe_osm           r16 0.967 lane 0.905 pair 0.958 wide 1.101
+    gsm_106857           r16 0.904 lane 0.958 pair 0.964 wide 1.000
+    offshore             r16 0.859 lane 0.983 pair 0.976 wide 1.023
+    parabolic_fem        r16 1.039 lane 1.153 pair 1.141 wide 1.080
+    pwtk                 r16 0.948 lane 0.940 pair 0.978 wide 0.994
+    shipsec5             r16 0.895 lane 0.960 pair 0.959 wide 1.000
+    shipsec8             r16 0.904 lane 0.951 pair 0.954 wide 1.000
+    ss                   r16 0.929 lane 0.935 pair 0.960 wide 1.005
+    tmt_unsym            r16 1.036 lane 0.949 pair 1.033 wide 1.111

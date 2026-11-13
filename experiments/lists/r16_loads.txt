@@ -1,0 +1,28 @@
+# r16_loads.txt - the matrices of the bytes-per-load controls: CSR-r16 exact, working set above the
+# 32 MiB L2 of the A100 at FP64 and the longest row at most ten times the mean, in campaign order.
+matrices/pde/CurlCurl_1/CurlCurl_1.mtx
+matrices/structural/shipsec8/shipsec8.mtx
+matrices/cfd/parabolic_fem/parabolic_fem.mtx
+matrices/pde/cant/cant.mtx
+matrices/electromagnetics/offshore/offshore.mtx
+matrices/electromagnetics/tmt_unsym/tmt_unsym.mtx
+matrices/structural/shipsec5/shipsec5.mtx
+matrices/circuit_power/G3_circuit/G3_circuit.mtx
+matrices/cfd/atmosmodl/atmosmodl.mtx
+matrices/chemistry/Si87H76/Si87H76.mtx
+matrices/structural/pwtk/pwtk.mtx
+matrices/pde/BenElechi1/BenElechi1.mtx
+matrices/circuit_power/TSOPF_RS_b2383/TSOPF_RS_b2383.mtx
+matrices/structural/af_0_k101/af_0_k101.mtx
+matrices/electromagnetics/gsm_106857/gsm_106857.mtx
+matrices/structural/F1/F1.mtx
+matrices/pde/ss/ss.mtx
+matrices/cfd/RM07R/RM07R.mtx
+matrices/electromagnetics/dielFilterV2real/dielFilterV2real.mtx
+matrices/graph/delaunay_n23/delaunay_n23.mtx
+matrices/structural/af_shell10/af_shell10.mtx
+matrices/structural/Geo_1438/Geo_1438.mtx
+matrices/electromagnetics/dielFilterV3real/dielFilterV3real.mtx
+matrices/graph/europe_osm/europe_osm.mtx
+matrices/structural/ML_Geer/ML_Geer.mtx
+matrices/pde/Bump_2911/Bump_2911.mtx

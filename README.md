@@ -76,6 +76,7 @@ and `SPMV_CUDA_MODULE` for your site, then `source experiments/slurm/env.sh`, ru
 ```bash
 source experiments/slurm/env.sh
 sbatch experiments/slurm/k_study.sbatch           # one <name>.ncu.csv per matrix of experiments/lists/k_study.txt
+sbatch experiments/slurm/r16_loads.sbatch         # CSR-r16 beside its three bytes-per-load controls
 ```
 
 Outside Slurm the same `ncu` command is in that file. It needs access to the performance counters of the
@@ -94,6 +95,8 @@ Everything in this table is produced by level 1, except the last two rows, which
 | Fig. prediction, extended version | `figures/prediction.pdf` | `analysis/make_results.py` | `a100/csr_layouts_rcm*.csv` |
 | Tables of speedup, rate and counters | `sections/results.tex` | `analysis/make_results.py` | as above, and `quadro/` for the Quadro rows |
 | FP16 controls | `sections/results.tex` | `analysis/make_results.py` | `a100/fp16_controls` |
+| Bytes-per-load controls of CSR-r16 | `sections/results.tex` | `analysis/make_results.py` | `a100/r16_loads`, `quadro/r16_loads` |
+| Gather without RCM | `sections/results.tex` | `analysis/make_results.py` | `a100/k_study_original`, `a100/csr_layouts.csv` |
 | Fig. layouts | `figures/layouts.pdf` | `analysis/make_layout_figure.py --output-dir output/paper` | none |
 | Tables of the matrices | `output/dataset.tex`, `output/dataset_matrices.tex` | `analysis/make_dataset_tex.py` | `matrices/manifest.csv`, `matrices/characterization*` |
 
@@ -114,7 +117,9 @@ data/smoke_matrices/      the two matrices of level 2
 
 In `data/results`, `csr_layouts_rcm.csv` is the campaign after reordering, `_tpr` adds every layout at every
 `T`, and `csr_layouts.csv` is the original ordering. `k_study*` holds the counters exported from Nsight
-Compute. `fp16_controls` repeats FP16 with FP16 accumulation and with CSR-r16 unrolled by 16.
+Compute, `k_study_rcm` after reordering and `k_study_original` in the original ordering. `fp16_controls` repeats FP16
+with FP16 accumulation and with CSR-r16 unrolled by 16. `r16_loads` times CSR-r16 beside three builds that change
+only how its offsets are loaded (`experiments/slurm/r16_loads.sbatch`, summarized by `analysis/r16_loads.py`).
 `element_major` and `unbounded` are earlier implementations of CSR-lp.
 
 ## Setup of the published measurements
